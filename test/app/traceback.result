@@ -1,0 +1,111 @@
+s, err = pcall(box.error, 1, "err")
+---
+...
+err.type
+---
+- ClientError
+...
+err.trace[1].file
+---
+- builtin/socket.lua
+...
+err.trace[1].line
+---
+- 997
+...
+s, err = pcall(error, "oh no" )
+---
+...
+err = err:unpack()
+---
+...
+err.type
+---
+- LuajitError
+...
+err.message
+---
+- oh no
+...
+#err.trace
+---
+- 10
+...
+s, err = pcall(function() return a.b end)
+---
+...
+err = err:unpack()
+---
+...
+err.type
+---
+- LuajitError
+...
+err.message
+---
+- '[string "s, err = pcall(function() return a.b end) "]:1: variable ''a'' is not
+  declared'
+...
+#err.trace
+---
+- 12
+...
+box.begin()
+---
+...
+s, err = pcall(box.schema.user.create, "user" )
+---
+...
+err = err:unpack()
+---
+...
+err.type
+---
+- ClientError
+...
+err.message
+---
+- Space _user does not support multi-statement transactions
+...
+#err.trace
+---
+- 11
+...
+errinj = box.error.injection
+---
+...
+space = box.schema.space.create('tweedledum')
+---
+...
+index = space:create_index('primary', { type = 'hash' })
+---
+...
+errinj.set("ERRINJ_TESTING", true)
+---
+- ok
+...
+s, err = pcall(space.select, space, {222444})
+---
+...
+errinj.set("ERRINJ_TESTING", false)
+---
+- ok
+...
+err= err:unpack()
+---
+...
+err.type
+---
+- ClientError
+...
+err.message
+---
+- Error injection 'ERRINJ_TESTING'
+...
+#err.trace
+---
+- 10
+...
+space:drop()
+---
+...

@@ -1006,6 +1006,10 @@ e:unpack();
   trace:
   - file: '[string "function err() box.error(box.error.ILLEGAL_PA..."]'
     line: 1
+  - file: '[C]'
+    line: 0
+  - file: '[C]'
+    line: 0
 ...
 flag = false;
 ---
