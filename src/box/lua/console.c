@@ -41,6 +41,8 @@
 #include <readline/history.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <wchar.h>
+#include <bits/wctype-wchar.h>
 
 /*
  * Completion engine (Mike Paul's).
@@ -379,11 +381,26 @@ const lua_rl_keywords[] = {
 };
 
 static int
-valid_identifier(const char *s)
+valid_identifier(const char *str)
 {
-	if (!(isalpha(*s) || *s == '_')) return 0;
-	for (s++; *s; s++)
-		if (!(isalpha(*s) || isdigit(*s) || *s == '_')) return 0;
+	assert(str);
+	size_t str_len = strlen(str);
+	mbstate_t state;
+	memset(&state, 0, sizeof(state));
+	wchar_t w;
+	ssize_t len = mbrtowc(&w, str, str_len, &state);
+	if (len <= 0)
+		return 0; /* invalid character or zero-length string */
+	if (!iswalpha(w) && w != L'_')
+		return 0; /* fail to match [a-zA-Z_] */
+	while (str_len > 0 && (len = mbrtowc(&w, str, str_len, &state)) > 0) {
+		if (!iswalnum(w) && w != L'_')
+			return 0; /* fail to match [a-zA-Z0-9_]* */
+		str_len -= len;
+		str += len;
+	}
+	if (len < 0)
+		return 1; /* invalid character  */
 	return 1;
 }
 
