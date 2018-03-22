@@ -197,15 +197,35 @@ static const struct index_vtab sysview_index_vtab = {
 	/* .end_build = */ generic_index_end_build,
 };
 
+/*
+ * System view filters.
+ * Filter must give read access to object, if one of the following conditions is true:
+ * 1. User has read, write, drop or alter access to universe.
+ * 2. User has read access to according system space.
+ * 3. User has read, write, drop or alter access to object.
+ * 4. User is an owner of the object.
+ * 5. Other specific conditions of the object of object type. For example,
+ *    role Public can be seen by anyone. Execute privilege on function must
+ *    allow to see the function in _vfunc space.
+ * In case of _vpriv, users who have read, write(for 1.7 compatibility),
+ * drop access to universe may need to delete some privileges of the object
+ * they are going to drop.
+ */
+
+/*
+ * Constant-group of privileges for checks on the 3rd condition.
+ */
+const uint32_t PRIV_WRDA = PRIV_W | PRIV_D | PRIV_A | PRIV_R;
+
 static bool
 vspace_filter(struct space *source, struct tuple *tuple)
 {
 	struct credentials *cr = effective_user();
-	if (PRIV_R & cr->universal_access)
-		return true; /* read access to universe */
+	/* If user has global alter, drop privilege she may access all spaces. */
+	if (cr->universal_access & PRIV_WRDA)
+		return true;
 	if (PRIV_R & source->access[cr->auth_token].effective)
-		return true; /* read access to _space space */
-
+		return true; /* read access to _space space. */
 	uint32_t space_id;
 	if (tuple_field_u32(tuple, BOX_SPACE_FIELD_ID, &space_id) != 0)
 		return false;
@@ -213,7 +233,7 @@ vspace_filter(struct space *source, struct tuple *tuple)
 	if (space == NULL)
 		return false;
 	user_access_t effective = space->access[cr->auth_token].effective;
-	return ((PRIV_R | PRIV_W) & (cr->universal_access | effective) ||
+	return (PRIV_WRDA & effective ||
 		space->def->uid == cr->uid);
 }
 
@@ -221,10 +241,13 @@ static bool
 vuser_filter(struct space *source, struct tuple *tuple)
 {
 	struct credentials *cr = effective_user();
-	if (PRIV_R & cr->universal_access)
-		return true; /* read access to universe */
+	/* If users have global alter, drop privilege
+	 * they may access all users.
+	 */
+	if (cr->universal_access & PRIV_WRDA)
+		return true;
 	if (PRIV_R & source->access[cr->auth_token].effective)
-		return true; /* read access to _user space */
+		return true; /* read access to _user space. */
 
 	uint32_t uid;
 	if (tuple_field_u32(tuple, BOX_USER_FIELD_ID, &uid) != 0)
@@ -232,15 +255,20 @@ vuser_filter(struct space *source, struct tuple *tuple)
 	uint32_t owner_id;
 	if (tuple_field_u32(tuple, BOX_USER_FIELD_UID, &owner_id) != 0)
 		return false;
-	return uid == cr->uid || owner_id == cr->uid;
+	/* Anyone can see PUBLIC sytem role. */
+	return uid == cr->uid || owner_id == cr->uid || uid == PUBLIC;
 }
 
 static bool
 vpriv_filter(struct space *source, struct tuple *tuple)
 {
 	struct credentials *cr = effective_user();
-	if (PRIV_R & cr->universal_access)
-		return true; /* read access to universe */
+	/*
+	 * Users who have write or drop privilege may alter or drop objects.
+	 * To do that, they have to be able to read privileges of that user.
+	 */
+	if (cr->universal_access & (PRIV_W | PRIV_D | PRIV_R))
+		return true;
 	if (PRIV_R & source->access[cr->auth_token].effective)
 		return true; /* read access to _priv space */
 
@@ -250,6 +278,10 @@ vpriv_filter(struct space *source, struct tuple *tuple)
 	uint32_t grantee_id;
 	if (tuple_field_u32(tuple, BOX_PRIV_FIELD_UID, &grantee_id) != 0)
 		return false;
+	/* Users may read privilege if they are grantor or grantee.
+	 * TODO: With introducing of grant option, users must see also
+	 * privileges on the objects they own.
+	 */
 	return grantor_id == cr->uid || grantee_id == cr->uid;
 }
 
@@ -257,29 +289,29 @@ static bool
 vfunc_filter(struct space *source, struct tuple *tuple)
 {
 	struct credentials *cr = effective_user();
-	if ((PRIV_R | PRIV_X) & cr->universal_access)
-		return true; /* read or execute access to universe */
+	if (cr->universal_access & (PRIV_WRDA | PRIV_X))
+		return true;
 	if (PRIV_R & source->access[cr->auth_token].effective)
 		return true; /* read access to _func space */
 
-	const char *name = tuple_field_cstr(tuple, BOX_FUNC_FIELD_NAME);
+	uint32_t name_len;
+	const char *name = tuple_field_str(tuple, BOX_FUNC_FIELD_NAME,
+					   &name_len);
 	if (name == NULL)
 		return false;
-	uint32_t name_len = strlen(name);
 	struct func *func = func_by_name(name, name_len);
 	assert(func != NULL);
 	user_access_t effective = func->access[cr->auth_token].effective;
-	if (func->def->uid == cr->uid || (PRIV_X & effective))
-		return true;
-	return false;
+	return func->def->uid == cr->uid ||
+		((PRIV_WRDA | PRIV_X) & effective);
 }
 
 static bool
 vsequence_filter(struct space *source, struct tuple *tuple)
 {
 	struct credentials *cr = effective_user();
-	if ((PRIV_R | PRIV_X) & cr->universal_access)
-		return true; /* read or execute access to universe */
+	if (cr->universal_access & PRIV_WRDA)
+		return true;
 	if (PRIV_R & source->access[cr->auth_token].effective)
 		return true; /* read access to _sequence space */
 
@@ -290,11 +322,9 @@ vsequence_filter(struct space *source, struct tuple *tuple)
 	if (sequence == NULL)
 		return false;
 	user_access_t effective = sequence->access[cr->auth_token].effective;
-	if (sequence->def->uid == cr->uid || ((PRIV_W | PRIV_R) & effective))
-		return true;
-	return false;
+	return sequence->def->uid == cr->uid ||
+		(PRIV_WRDA & effective);
 }
-
 
 struct sysview_index *
 sysview_index_new(struct sysview_engine *sysview,
