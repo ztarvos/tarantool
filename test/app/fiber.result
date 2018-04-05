@@ -1005,10 +1005,13 @@ e:unpack();
   message: Illegal parameters, oh my
   trace:
   - file: '[string "function err() box.error(box.error.ILLEGAL_PA..."]'
+    function: none
     line: 1
   - file: '[C]'
+    function: error
     line: 0
   - file: '[C]'
+    function: none
     line: 0
 ...
 flag = false;

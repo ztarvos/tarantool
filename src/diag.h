@@ -45,6 +45,7 @@ extern "C" {
 enum {
 	DIAG_ERRMSG_MAX = 512,
 	DIAG_FILENAME_MAX = 256,
+	DIAG_FUNKNAME_MAX = 256,
 	DIAG_MAX_TRACEBACK = 32
 };
 
@@ -54,6 +55,7 @@ struct error;
 struct diag_frame {
 	int line;
 	char filename[DIAG_FILENAME_MAX];
+	char func_name[DIAG_FUNKNAME_MAX];
 	struct rlist link;
 };
 

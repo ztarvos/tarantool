@@ -132,20 +132,28 @@ e:unpack()
   message: Illegal parameters, bla bla
   trace:
   - file: builtin/socket.lua
+    function: none
     line: <number>
   - file: '[C]'
+    function: pcall
     line: <number>
   - file: builtin/box/console.lua
+    function: none
     line: <number>
   - file: builtin/box/console.lua
+    function: repl
     line: <number>
   - file: builtin/box/console.lua
+    function: eval
     line: <number>
   - file: '[C]'
+    function: pcall
     line: <number>
   - file: '[C]'
+    function: none
     line: <number>
   - file: '[C]'
+    function: none
     line: <number>
 ...
 e.type

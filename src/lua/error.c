@@ -111,7 +111,7 @@ traceback_error(struct lua_State *L, struct error* e)
 	int level = 0;
 	rlist_create(&e->frames);
 	while (lua_getstack(L, level++, &ar) > 0) {
-		lua_getinfo(L, "nSl", &ar);
+		lua_getinfo(L, "Sln", &ar);
 		struct diag_frame * frame =
 			(struct diag_frame *) malloc(sizeof(*frame));
 		if (frame == NULL) {
@@ -119,18 +119,22 @@ traceback_error(struct lua_State *L, struct error* e)
 			return 1;
 		}
 		if (e->frames_count < DIAG_MAX_TRACEBACK) {
-			if (*ar.what == 'L') {
-				memcpy(frame->filename, ar.short_src,
-				       sizeof(ar.short_src));
+			if (*ar.what == 'L' || *ar.what == 'm') {
+				strcpy(frame->filename, ar.short_src);
 				frame->line = ar.currentline;
-				e->frames_count++;
-			} else if (*ar.what == 'm') {
-				snprintf(frame->filename, sizeof("main"),
-					 "main");
-				frame->line = ar.currentline;
+				if (*ar.namewhat != '\0') {
+					strcpy(frame->func_name, ar.name);
+				} else {
+					sprintf(frame->func_name, "none");
+				}
 				e->frames_count++;
 			} else if (*ar.what == 'C') {
-				snprintf(frame->filename, sizeof("[C]"), "[C]");
+				if (*ar.namewhat != '\0') {
+					strcpy(frame->func_name, ar.name);
+				} else {
+					sprintf(frame->func_name, "none");
+				}
+				sprintf(frame->filename, "[C]");
 				frame->line =
 					(ar.currentline > 0) ? ar.currentline: 0;
 				e->frames_count++;
@@ -178,6 +182,10 @@ lua_error_gettraceback(struct lua_State *L)
 
 		/* push value - table of filename and line */
 		lua_newtable(L);
+
+		lua_pushstring(L, "function");
+		lua_pushstring(L, frame->func_name);
+		lua_settable(L, -3);
 
 		lua_pushstring(L, "file");
 		lua_pushstring(L, frame->filename);
