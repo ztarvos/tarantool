@@ -1395,7 +1395,7 @@ sqlite3WhereCodeOneLoopStart(WhereInfo * pWInfo,	/* Complete information about t
 		assert(pk);
 		int nPkCol = index_column_count(pk);
 		if (nPkCol == 1
-		    && pIdx->pTable->aCol[pk->aiColumn[0]].affinity == 'D') {
+		    && pIdx->pTable->aCol[pk->aiColumn[0]].typeDef.type == 'D') {
 			/* Right now INTEGER PRIMARY KEY is the only option to
 			 * get Tarantool's INTEGER column type. Need special handling
 			 * here: try to loosely convert FLOAT to INT. If RHS type

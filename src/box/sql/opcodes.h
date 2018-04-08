@@ -85,37 +85,37 @@
 #define OP_Function       82 /* synopsis: r[P3]=func(r[P2@P5])             */
 #define OP_AddImm         83 /* synopsis: r[P1]=r[P1]+P2                   */
 #define OP_RealAffinity   84
-#define OP_Cast           85 /* synopsis: affinity(r[P1])                  */
-#define OP_Permutation    86
-#define OP_Compare        87 /* synopsis: r[P1@P3] <-> r[P2@P3]            */
-#define OP_Column         88 /* synopsis: r[P3]=PX                         */
-#define OP_Affinity       89 /* synopsis: affinity(r[P1@P2])               */
-#define OP_MakeRecord     90 /* synopsis: r[P3]=mkrec(r[P1@P2])            */
-#define OP_Count          91 /* synopsis: r[P2]=count()                    */
-#define OP_FkCheckCommit  92
-#define OP_TTransaction   93
-#define OP_ReadCookie     94
-#define OP_SetCookie      95
-#define OP_ReopenIdx      96 /* synopsis: index id = P2, space ptr = P3    */
-#define OP_OpenRead       97 /* synopsis: index id = P2, space ptr = P3    */
-#define OP_OpenWrite      98 /* synopsis: index id = P2, space ptr = P3    */
-#define OP_OpenTEphemeral  99 /* synopsis: nColumn = P2                     */
-#define OP_SorterOpen    100
-#define OP_SequenceTest  101 /* synopsis: if (cursor[P1].ctr++) pc = P2    */
-#define OP_OpenPseudo    102 /* synopsis: P3 columns in r[P2]              */
-#define OP_Close         103
-#define OP_ColumnsUsed   104
-#define OP_Sequence      105 /* synopsis: r[P2]=cursor[P1].ctr++           */
-#define OP_NextSequenceId 106 /* synopsis: r[P2]=get_max(_sequence)         */
-#define OP_NextIdEphemeral 107 /* synopsis: r[P3]=get_max(space_index[P1]{Column[P2]}) */
-#define OP_FCopy         108 /* synopsis: reg[P2@cur_frame]= reg[P1@root_frame(OPFLAG_SAME_FRAME)] */
-#define OP_Delete        109
-#define OP_ResetCount    110
-#define OP_SorterCompare 111 /* synopsis: if key(P1)!=trim(r[P3],P4) goto P2 */
-#define OP_SorterData    112 /* synopsis: r[P2]=data                       */
-#define OP_RowData       113 /* synopsis: r[P2]=data                       */
-#define OP_NullRow       114
-#define OP_Real          115 /* same as TK_FLOAT, synopsis: r[P2]=P4       */
+#define OP_Real           85 /* same as TK_FLOAT, synopsis: r[P2]=P4       */
+#define OP_Cast           86 /* synopsis: affinity(r[P1])                  */
+#define OP_Permutation    87
+#define OP_Compare        88 /* synopsis: r[P1@P3] <-> r[P2@P3]            */
+#define OP_Column         89 /* synopsis: r[P3]=PX                         */
+#define OP_Affinity       90 /* synopsis: affinity(r[P1@P2])               */
+#define OP_MakeRecord     91 /* synopsis: r[P3]=mkrec(r[P1@P2])            */
+#define OP_Count          92 /* synopsis: r[P2]=count()                    */
+#define OP_FkCheckCommit  93
+#define OP_TTransaction   94
+#define OP_ReadCookie     95
+#define OP_SetCookie      96
+#define OP_ReopenIdx      97 /* synopsis: index id = P2, space ptr = P3    */
+#define OP_OpenRead       98 /* synopsis: index id = P2, space ptr = P3    */
+#define OP_OpenWrite      99 /* synopsis: index id = P2, space ptr = P3    */
+#define OP_OpenTEphemeral 100 /* synopsis: nColumn = P2                     */
+#define OP_SorterOpen    101
+#define OP_SequenceTest  102 /* synopsis: if (cursor[P1].ctr++) pc = P2    */
+#define OP_OpenPseudo    103 /* synopsis: P3 columns in r[P2]              */
+#define OP_Close         104
+#define OP_ColumnsUsed   105
+#define OP_Sequence      106 /* synopsis: r[P2]=cursor[P1].ctr++           */
+#define OP_NextSequenceId 107 /* synopsis: r[P2]=get_max(_sequence)         */
+#define OP_NextIdEphemeral 108 /* synopsis: r[P3]=get_max(space_index[P1]{Column[P2]}) */
+#define OP_FCopy         109 /* synopsis: reg[P2@cur_frame]= reg[P1@root_frame(OPFLAG_SAME_FRAME)] */
+#define OP_Delete        110
+#define OP_ResetCount    111
+#define OP_SorterCompare 112 /* synopsis: if key(P1)!=trim(r[P3],P4) goto P2 */
+#define OP_SorterData    113 /* synopsis: r[P2]=data                       */
+#define OP_RowData       114 /* synopsis: r[P2]=data                       */
+#define OP_NullRow       115
 #define OP_SorterInsert  116 /* synopsis: key=r[P2]                        */
 #define OP_IdxReplace    117 /* synopsis: key=r[P2]                        */
 #define OP_IdxInsert     118 /* synopsis: key=r[P2]                        */
@@ -164,11 +164,11 @@
 /*  56 */ 0x03, 0x03, 0x03, 0x01, 0x02, 0x02, 0x08, 0x00,\
 /*  64 */ 0x10, 0x10, 0x10, 0x00, 0x10, 0x00, 0x10, 0x00,\
 /*  72 */ 0x10, 0x10, 0x00, 0x10, 0x00, 0x10, 0x10, 0x00,\
-/*  80 */ 0x00, 0x00, 0x00, 0x02, 0x02, 0x02, 0x00, 0x00,\
-/*  88 */ 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x10, 0x00,\
+/*  80 */ 0x00, 0x00, 0x00, 0x02, 0x02, 0x10, 0x02, 0x00,\
+/*  88 */ 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x10,\
 /*  96 */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\
-/* 104 */ 0x00, 0x10, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00,\
-/* 112 */ 0x00, 0x00, 0x00, 0x10, 0x04, 0x00, 0x04, 0x00,\
+/* 104 */ 0x00, 0x00, 0x10, 0x00, 0x00, 0x10, 0x00, 0x00,\
+/* 112 */ 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x04, 0x00,\
 /* 120 */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,\
 /* 128 */ 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x1a, 0x00,\
 /* 136 */ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,}

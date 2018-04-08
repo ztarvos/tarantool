@@ -2,7 +2,7 @@ remote = require('net.box')
 errinj = box.error.injection
 fiber = require('fiber')
 
-box.sql.execute('create table test (id primary key, a float, b text)')
+box.sql.execute('create table test (id int primary key, a float, b text)')
 box.schema.user.grant('guest','read,write,execute', 'universe')
 cn = remote.connect(box.cfg.listen)
 cn:ping()

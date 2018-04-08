@@ -1,7 +1,7 @@
 test_run = require('test_run').new()
 
 -- create space
-box.sql.execute("CREATE TABLE t(id PRIMARY KEY)")
+box.sql.execute("CREATE TABLE t(id int PRIMARY KEY)")
 
 box.sql.execute("CREATE TRIGGER tt_bu BEFORE UPDATE ON t BEGIN SELECT 1; END")
 box.sql.execute("CREATE TRIGGER tt_au AFTER UPDATE ON t BEGIN SELECT 1; END")

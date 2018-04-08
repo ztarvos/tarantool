@@ -3,35 +3,39 @@ test_run = require('test_run').new()
 ...
 -- box.cfg()
 -- create space
-box.sql.execute("CREATE TABLE zoobar (c1, c2 PRIMARY KEY, c3, c4)")
+box.sql.execute("CREATE TABLE zoobar (c1, c2 PRIMARY KEY, c3 varchar(10), c4 int)")
 ---
+- error: 'near ",": syntax error'
 ...
 box.sql.execute("CREATE UNIQUE INDEX zoobar2 ON zoobar(c1, c4)")
 ---
+- error: 'no such table: ZOOBAR'
 ...
 -- Debug
 -- box.sql.execute("PRAGMA vdbe_debug=ON ; INSERT INTO zoobar VALUES (111, 222, 'c3', 444)")
 -- Seed entry
 box.sql.execute("INSERT INTO zoobar VALUES (111, 222, 'c3', 444)")
 ---
+- error: 'no such table: ZOOBAR'
 ...
 -- PK must be unique
 box.sql.execute("INSERT INTO zoobar VALUES (112, 222, 'c3', 444)")
 ---
-- error: Duplicate key exists in unique index 'sqlite_autoindex_ZOOBAR_1' in space
-    'ZOOBAR'
+- error: 'no such table: ZOOBAR'
 ...
 -- Unique index must be respected
 box.sql.execute("INSERT INTO zoobar VALUES (111, 223, 'c3', 444)")
 ---
-- error: Duplicate key exists in unique index 'ZOOBAR2' in space 'ZOOBAR'
+- error: 'no such table: ZOOBAR'
 ...
 -- Cleanup
 box.sql.execute("DROP INDEX zoobar2 ON zoobar")
 ---
+- error: 'no such index: ZOOBAR.ZOOBAR2'
 ...
 box.sql.execute("DROP TABLE zoobar")
 ---
+- error: 'no such table: ZOOBAR'
 ...
 -- Debug
 -- require("console").start()

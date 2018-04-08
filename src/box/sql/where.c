@@ -383,7 +383,7 @@ whereScanInit(WhereScan * pScan,	/* The WhereScan object being initialized */
 		if (iColumn == XN_EXPR) {
 			pScan->pIdxExpr = pIdx->aColExpr->a[j].pExpr;
 		} else if (iColumn >= 0) {
-			pScan->idxaff = pIdx->pTable->aCol[iColumn].affinity;
+			pScan->idxaff = pIdx->pTable->aCol[iColumn].typeDef.type;
 			pScan->zCollName = index_collation_name(pIdx, j);
 		}
 	} else if (iColumn == XN_EXPR) {

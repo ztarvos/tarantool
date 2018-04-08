@@ -1954,11 +1954,11 @@ sqlite3SelectAddColumnTypeAndCollation(Parse * pParse,		/* Parsing contexts */
 		p = a[i].pExpr;
 		type = columnType(&sNC, p, 0, 0, 0, &pCol->szEst);
 		szAll += pCol->szEst;
-		pCol->affinity = sqlite3ExprAffinity(p);
+		pCol->typeDef.type = sqlite3ExprAffinity(p);
 		pCol->type = type;
 
-		if (pCol->affinity == 0)
-			pCol->affinity = SQLITE_AFF_BLOB;
+		if (pCol->typeDef.type == 0)
+			pCol->typeDef.type = SQLITE_AFF_BLOB;
 		pColl = sqlite3ExprCollSeq(pParse, p);
 		if (pColl && pCol->zColl == 0) {
 			pCol->zColl = sqlite3DbStrDup(db, pColl->name);

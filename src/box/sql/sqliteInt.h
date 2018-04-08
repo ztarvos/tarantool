@@ -1490,6 +1490,7 @@ typedef struct TreeView TreeView;
 typedef struct Trigger Trigger;
 typedef struct TriggerPrg TriggerPrg;
 typedef struct TriggerStep TriggerStep;
+typedef struct TypeDef TypeDef;
 typedef struct UnpackedRecord UnpackedRecord;
 typedef struct Walker Walker;
 typedef struct WhereInfo WhereInfo;
@@ -1871,30 +1872,6 @@ struct Savepoint {
 #define SAVEPOINT_ROLLBACK   2
 
 /*
- * information about each column of an SQL table is held in an instance
- * of this structure.
- */
-struct Column {
-	char *zName;		/* Name of this column */
-	enum field_type type;	/* Column type. */
-	Expr *pDflt;		/* Default value of this column */
-	char *zColl;		/* Collating sequence.  If NULL, use the default */
-	enum on_conflict_action notNull;  /* An ON_CONFLICT_ACTION code for
-					   * handling a NOT NULL constraint
-					   */
-	char affinity;		/* One of the SQLITE_AFF_... values */
-	u8 szEst;		/* Estimated size of value in this column. sizeof(INT)==1 */
-	u8 is_primkey;		/* Boolean propertie for being PK */
-};
-
-/*
- * A sort order can be either ASC or DESC.
- */
-#define SQLITE_SO_ASC       0	/* Sort in ascending order */
-#define SQLITE_SO_DESC      1	/* Sort in ascending order */
-#define SQLITE_SO_UNDEFINED -1	/* No sort order specified */
-
-/*
  * Column affinity types.
  *
  * These used to have mnemonic name like 'i' for SQLITE_AFF_INTEGER and
@@ -1916,11 +1893,57 @@ struct Column {
 
 #define sqlite3IsNumericAffinity(X)  ((X)>=SQLITE_AFF_NUMERIC)
 
+#define MAX_PRECISION 8
+#define MAX_SIZE 16
+
+struct NumericTypeDef {
+	long size;
+	long precision;
+	bool positive;
+};
+
+struct StringTypeDef {
+	long length;
+};
+
+struct TypeDef {
+	char type;
+	union {
+		struct NumericTypeDef n;
+		struct StringTypeDef s;
+	};
+};
+
 /*
  * The SQLITE_AFF_MASK values masks off the significant bits of an
  * affinity value.
  */
 #define SQLITE_AFF_MASK     0x47
+
+
+/*
+ * information about each column of an SQL table is held in an instance
+ * of this structure.
+ */
+struct Column {
+	char *zName;		/* Name of this column */
+	enum field_type type;	/* Column type. */
+	Expr *pDflt;		/* Default value of this column */
+	char *zColl;		/* Collating sequence.  If NULL, use the default */
+	enum on_conflict_action notNull;  /* An ON_CONFLICT_ACTION code for
+					   * handling a NOT NULL constraint
+					   */
+	TypeDef typeDef;		/* One of the SQLITE_AFF_... values */
+	u8 szEst;		/* Estimated size of value in this column. sizeof(INT)==1 */
+	u8 is_primkey;		/* Boolean propertie for being PK */
+};
+
+/*
+ * A sort order can be either ASC or DESC.
+ */
+#define SQLITE_SO_ASC       0	/* Sort in ascending order */
+#define SQLITE_SO_DESC      1	/* Sort in ascending order */
+#define SQLITE_SO_UNDEFINED -1	/* No sort order specified */
 
 /*
  * Additional bit values that can be ORed with an affinity without
@@ -2328,7 +2351,7 @@ typedef int ynVar;
  */
 struct Expr {
 	u8 op;			/* Operation performed by this node */
-	char affinity;		/* The affinity of the column or 0 if not a column */
+	TypeDef typeDef;		/* The affinity of the column or 0 if not a column */
 	u32 flags;		/* Various flags.  EP_* See below */
 	union {
 		char *zToken;	/* Token value. Zero terminated and dequoted */
@@ -3514,7 +3537,7 @@ void sqlite3ClearTempRegCache(Parse *);
 #ifdef SQLITE_DEBUG
 int sqlite3NoTempsInRange(Parse *, int, int);
 #endif
-Expr *sqlite3ExprAlloc(sqlite3 *, int, const Token *, int);
+Expr *sqlite3ExprAlloc(sqlite3 *, int, const TypeDef *, const Token *, int);
 Expr *sqlite3Expr(sqlite3 *, int, const char *);
 Expr *sqlite3ExprInteger(sqlite3 *, int);
 void sqlite3ExprAttachSubtrees(sqlite3 *, Expr *, Expr *, Expr *);
@@ -3542,7 +3565,7 @@ void sqlite3SelectAddColumnTypeAndCollation(Parse *, Table *, Select *);
 Table *sqlite3ResultSetOfSelect(Parse *, Select *);
 Index *sqlite3PrimaryKeyIndex(Table *);
 void sqlite3StartTable(Parse *, Token *, int);
-void sqlite3AddColumn(Parse *, Token *, Token *);
+void sqlite3AddColumn(Parse *, Token *, TypeDef *);
 void sqlite3AddNotNull(Parse *, int);
 void sqlite3AddPrimaryKey(Parse *, ExprList *, int, int, int);
 void sqlite3AddCheckConstraint(Parse *, Expr *);
@@ -3800,6 +3823,8 @@ u64 sqlite3LogEstToInt(LogEst);
 VList *sqlite3VListAdd(sqlite3 *, VList *, const char *, int, int);
 const char *sqlite3VListNumToName(VList *, int);
 int sqlite3VListNameToNum(VList *, const char *, int);
+
+int sqlite3TokenToLong(Token *, long *);
 
 /*
  * Routines to read and write variable-length integers.  These used to

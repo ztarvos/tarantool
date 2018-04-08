@@ -3,7 +3,7 @@ env = require('test_run')
 test_run = env.new()
 
 -- Create a table and insert a datum
-box.sql.execute([[CREATE TABLE t1(a PRIMARY KEY, b, UNIQUE(b));]])
+box.sql.execute([[CREATE TABLE t1(a int PRIMARY KEY, b int, UNIQUE(b));]])
 box.sql.execute([[INSERT INTO t1 VALUES(1,2);]])
 
 -- Sanity check

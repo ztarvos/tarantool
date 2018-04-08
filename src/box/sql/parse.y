@@ -194,7 +194,7 @@ create_table_args ::= AS select(S). {
 }
 columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
-columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
+columnname(A) ::= nm(A) typedef(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 
 // An IDENTIFIER can be a generic identifier, or one of several
 // keywords.  Any non-standard keyword can also be an identifier.
@@ -238,24 +238,35 @@ nm(A) ::= id(A). {
   }
 }
 
-// A typetoken is really zero or more tokens that form a type name such
-// as can be found after the column name in a CREATE TABLE statement.
-// Multiple tokens are concatenated to form the value of the typetoken.
-//
-%type typetoken {Token}
-typetoken(A) ::= .   {A.n = 0; A.z = 0;}
-typetoken(A) ::= typename(A).
-typetoken(A) ::= typename(A) LP signed RP(Y). {
-  A.n = (int)(&Y.z[Y.n] - A.z);
-}
-typetoken(A) ::= typename(A) LP signed COMMA signed RP(Y). {
-  A.n = (int)(&Y.z[Y.n] - A.z);
-}
-%type typename {Token}
-typename(A) ::= ids(A).
-typename(A) ::= typename(A) ids(Y). {A.n=Y.n+(int)(Y.z-A.z);}
-signed ::= plus_num.
-signed ::= minus_num.
+%type typedef {TypeDef}
+typedef(A) ::= TEXT . {A.type = SQLITE_AFF_TEXT;}
+typedef(A) ::= BLOB . {A.type = SQLITE_AFF_BLOB; }
+typedef(A) ::= DATE . {/*FIXME: use native type*/ A.type = SQLITE_AFF_INTEGER;}
+typedef(A) ::= TIME . {/*FIXME: use native type*/ A.type = SQLITE_AFF_REAL;}
+typedef(A) ::= DATETIME . {/*FIXME: use native type*/ A.type = SQLITE_AFF_REAL;}
+
+%type charlengthtypedef {TypeDef}
+typedef(A) ::= CHAR|VARCHAR charlengthtypedef(B) . {A.type = SQLITE_AFF_TEXT;(void)B;}
+charlengthtypedef(A) ::= LP INTEGER(B) RP . {sqlite3TokenToLong(&B, &A.s.length);}
+
+%type numbertypedef {TypeDef}
+typedef(A) ::= numbertypedef(A) .
+
+%type unsignednumbertypedef {TypeDef}
+numbertypedef(A) ::= unsignednumbertypedef(B) . {A = B; A.n.positive = true;}
+numbertypedef(A) ::= UNSIGNED unsignednumbertypedef(B) . {A = B; A.n.positive = true;}
+unsignednumbertypedef(A) ::= FLOAT . {A.type = SQLITE_AFF_REAL;}
+unsignednumbertypedef(A) ::= INT|INTEGER . {A.type = SQLITE_AFF_INTEGER; A.n.size = 16; A.n.precision = 0; }
+
+%type numlengthtypedef {TypeDef}
+unsignednumbertypedef(A) ::= DECIMAL|NUMERIC numlengthtypedef(B) . {A.type = SQLITE_AFF_INTEGER; A.n = B.n; }
+numlengthtypedef(A) ::= . {A.n.size = 16; A.n.precision = 0;}
+numlengthtypedef(A) ::= LP INTEGER(B) RP . {
+    sqlite3TokenToLong(&B, &A.n.size);
+    A.n.precision = 0;}
+numlengthtypedef(A) ::= LP INTEGER(B) COMMA INTEGER(C) RP . {
+    sqlite3TokenToLong(&B, &A.n.size);
+    sqlite3TokenToLong(&C, &A.n.precision);}
 
 // "carglist" is a list of additional constraints that come after the
 // column name and column type in a CREATE TABLE statement.
@@ -547,7 +558,7 @@ selcollist(A) ::= sclp(A) STAR. {
 }
 selcollist(A) ::= sclp(A) nm(X) DOT STAR. {
   Expr *pRight = sqlite3PExpr(pParse, TK_ASTERISK, 0, 0);
-  Expr *pLeft = sqlite3ExprAlloc(pParse->db, TK_ID, &X, 1);
+  Expr *pLeft = sqlite3ExprAlloc(pParse->db, TK_ID, 0, &X, 1);
   Expr *pDot = sqlite3PExpr(pParse, TK_DOT, pLeft, pRight);
   A = sqlite3ExprListAppend(pParse,A, pDot);
 }
@@ -859,6 +870,20 @@ idlist(A) ::= nm(Y).
     Expr *p = sqlite3DbMallocRawNN(pParse->db, sizeof(Expr)+t.n+1);
     if( p ){
       memset(p, 0, sizeof(Expr));
+      switch (op) {
+      case TK_STRING:
+	p->typeDef.type = SQLITE_AFF_TEXT;
+        break;
+      case TK_BLOB:
+        p->typeDef.type = SQLITE_AFF_BLOB;
+        break;
+      case TK_INTEGER:
+        p->typeDef.type = SQLITE_AFF_INTEGER;
+        break;
+      case TK_FLOAT:
+        p->typeDef.type = SQLITE_AFF_REAL;
+        break;
+      }
       p->op = (u8)op;
       p->flags = EP_Leaf;
       p->iAgg = -1;
@@ -885,15 +910,15 @@ term(A) ::= NULL(X).        {spanExpr(&A,pParse,@X,X);/*A-overwrites-X*/}
 expr(A) ::= id(X).          {spanExpr(&A,pParse,TK_ID,X); /*A-overwrites-X*/}
 expr(A) ::= JOIN_KW(X).     {spanExpr(&A,pParse,TK_ID,X); /*A-overwrites-X*/}
 expr(A) ::= nm(X) DOT nm(Y). {
-  Expr *temp1 = sqlite3ExprAlloc(pParse->db, TK_ID, &X, 1);
-  Expr *temp2 = sqlite3ExprAlloc(pParse->db, TK_ID, &Y, 1);
+  Expr *temp1 = sqlite3ExprAlloc(pParse->db, TK_ID, 0, &X, 1);
+  Expr *temp2 = sqlite3ExprAlloc(pParse->db, TK_ID, 0, &Y, 1);
   spanSet(&A,&X,&Y); /*A-overwrites-X*/
   A.pExpr = sqlite3PExpr(pParse, TK_DOT, temp1, temp2);
 }
 term(A) ::= FLOAT|BLOB(X). {spanExpr(&A,pParse,@X,X);/*A-overwrites-X*/}
 term(A) ::= STRING(X).     {spanExpr(&A,pParse,@X,X);/*A-overwrites-X*/}
 term(A) ::= INTEGER(X). {
-  A.pExpr = sqlite3ExprAlloc(pParse->db, TK_INTEGER, &X, 1);
+  A.pExpr = sqlite3ExprAlloc(pParse->db, TK_INTEGER, 0, &X, 1);
   A.zStart = X.z;
   A.zEnd = X.z + X.n;
   if( A.pExpr ) A.pExpr->flags |= EP_Leaf;
@@ -924,9 +949,9 @@ expr(A) ::= expr(A) COLLATE id(C). {
   A.zEnd = &C.z[C.n];
 }
 %ifndef SQLITE_OMIT_CAST
-expr(A) ::= CAST(X) LP expr(E) AS typetoken(T) RP(Y). {
+expr(A) ::= CAST(X) LP expr(E) AS typedef(T) RP(Y). {
   spanSet(&A,&X,&Y); /*A-overwrites-X*/
-  A.pExpr = sqlite3ExprAlloc(pParse->db, TK_CAST, &T, 1);
+  A.pExpr = sqlite3ExprAlloc(pParse->db, TK_CAST, &T, 0, 1);
   sqlite3ExprAttachSubtrees(pParse->db, A.pExpr, E.pExpr, 0);
 }
 %endif  SQLITE_OMIT_CAST
@@ -1124,8 +1149,8 @@ expr(A) ::= expr(A) between_op(N) expr(X) AND expr(Y). [BETWEEN] {
       ** simplify to constants 0 (false) and 1 (true), respectively,
       ** regardless of the value of expr1.
       */
-	    sql_expr_free(pParse->db, A.pExpr, false);
-      A.pExpr = sqlite3ExprAlloc(pParse->db, TK_INTEGER,&sqlite3IntTokens[N],1);
+      sql_expr_free(pParse->db, A.pExpr, false);
+      A.pExpr = sqlite3ExprAlloc(pParse->db, TK_INTEGER,0,&sqlite3IntTokens[N],1);
     }else if( Y->nExpr==1 ){
       /* Expressions of the form:
       **
@@ -1461,14 +1486,14 @@ expr(A) ::= RAISE(X) LP IGNORE RP(Y).  {
   spanSet(&A,&X,&Y);  /*A-overwrites-X*/
   A.pExpr = sqlite3PExpr(pParse, TK_RAISE, 0, 0); 
   if( A.pExpr ){
-    A.pExpr->affinity = ON_CONFLICT_ACTION_IGNORE;
+//FIXME    A.pExpr->affinity = ON_CONFLICT_ACTION_IGNORE;
   }
 }
 expr(A) ::= RAISE(X) LP raisetype(T) COMMA STRING(Z) RP(Y).  {
   spanSet(&A,&X,&Y);  /*A-overwrites-X*/
-  A.pExpr = sqlite3ExprAlloc(pParse->db, TK_RAISE, &Z, 1); 
+  A.pExpr = sqlite3ExprAlloc(pParse->db, TK_RAISE, 0, &Z, 1); 
   if( A.pExpr ) {
-    A.pExpr->affinity = (char)T;
+//FIXME    A.pExpr->affinity = (char)T;
   }
 }
 %endif  !SQLITE_OMIT_TRIGGER

@@ -254,6 +254,7 @@ lookupName(Parse * pParse,	/* The parsing context */
 							cntTab = 2;
 							pMatch = pItem;
 							pExpr->iColumn = j;
+							pExpr->typeDef = pEList->a[j].pExpr->typeDef;
 							hit = 1;
 						}
 					}
@@ -293,6 +294,7 @@ lookupName(Parse * pParse,	/* The parsing context */
 						cnt++;
 						pMatch = pItem;
 						pExpr->iColumn = (i16) j;
+						pExpr->typeDef = pCol->typeDef;
 						break;
 					}
 				}
@@ -344,22 +346,23 @@ lookupName(Parse * pParse,	/* The parsing context */
 				if (iCol < pTab->nCol) {
 					cnt++;
 					if (iCol < 0) {
-						pExpr->affinity =
+						pExpr->typeDef.type =
 						    SQLITE_AFF_INTEGER;
-					} else if (pExpr->iTable == 0) {
-						testcase(iCol == 31);
-						testcase(iCol == 32);
-						pParse->oldmask |=
-						    (iCol >=
-						     32 ? 0xffffffff
-						     : (((u32) 1) << iCol));
 					} else {
 						testcase(iCol == 31);
 						testcase(iCol == 32);
-						pParse->newmask |=
-						    (iCol >=
-						     32 ? 0xffffffff
-						     : (((u32) 1) << iCol));
+						pExpr->typeDef = pCol->typeDef;
+						if (pExpr->iTable == 0) {
+							pParse->oldmask |=
+							    (iCol >=
+							     32 ? 0xffffffff
+							     : (((u32) 1) << iCol));
+						} else {
+							pParse->newmask |=
+							    (iCol >=
+							     32 ? 0xffffffff
+							     : (((u32) 1) << iCol));
+						}
 					}
 					pExpr->iColumn = (i16) iCol;
 					pExpr->pTab = pTab;
@@ -493,7 +496,7 @@ lookupName(Parse * pParse,	/* The parsing context */
 Expr *
 sqlite3CreateColumnExpr(sqlite3 * db, SrcList * pSrc, int iSrc, int iCol)
 {
-	Expr *p = sqlite3ExprAlloc(db, TK_COLUMN, 0, 0);
+	Expr *p = sqlite3ExprAlloc(db, TK_COLUMN, 0, 0, 0);
 	if (p) {
 		struct SrcList_item *pItem = &pSrc->a[iSrc];
 		p->pTab = pItem->pTab;

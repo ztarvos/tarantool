@@ -49,7 +49,7 @@ char
 sqlite3TableColumnAffinity(Table * pTab, int iCol)
 {
 	assert(iCol < pTab->nCol);
-	return iCol >= 0 ? pTab->aCol[iCol].affinity : SQLITE_AFF_INTEGER;
+	return iCol >= 0 ? pTab->aCol[iCol].typeDef.type : SQLITE_AFF_INTEGER;
 }
 
 /*
@@ -97,7 +97,7 @@ sqlite3ExprAffinity(Expr * pExpr)
 		return sqlite3ExprAffinity(pExpr->pLeft->x.pSelect->pEList->
 					   a[pExpr->iColumn].pExpr);
 	}
-	return pExpr->affinity;
+	return pExpr->typeDef.type;
 }
 
 /*
@@ -117,7 +117,7 @@ sqlite3ExprAddCollateToken(Parse * pParse,	/* Parsing context */
 {
 	if (pCollName->n > 0) {
 		Expr *pNew =
-		    sqlite3ExprAlloc(pParse->db, TK_COLLATE, pCollName,
+		    sqlite3ExprAlloc(pParse->db, TK_COLLATE, 0, pCollName,
 				     dequote);
 		if (pNew) {
 			pNew->pLeft = pExpr;
@@ -837,6 +837,7 @@ sqlite3ExprSetHeightAndFlags(Parse * pParse, Expr * p)
 Expr *
 sqlite3ExprAlloc(sqlite3 * db,	/* Handle for sqlite3DbMallocRawNN() */
 		 int op,	/* Expression opcode */
+		 const TypeDef * pTypeDef, /* Type definition for CAST */
 		 const Token * pToken,	/* Token argument.  Might be NULL */
 		 int dequote	/* True to dequote */
     )
@@ -858,6 +859,24 @@ sqlite3ExprAlloc(sqlite3 * db,	/* Handle for sqlite3DbMallocRawNN() */
 		memset(pNew, 0, sizeof(Expr));
 		pNew->op = (u8) op;
 		pNew->iAgg = -1;
+		if (pTypeDef)
+			pNew->typeDef = *pTypeDef;
+		else {
+			switch (op) {
+			case TK_STRING:
+				pNew->typeDef.type = SQLITE_AFF_TEXT;
+				break;
+			case TK_BLOB:
+				pNew->typeDef.type = SQLITE_AFF_BLOB;
+				break;
+			case TK_INTEGER:
+				pNew->typeDef.type = SQLITE_AFF_INTEGER;
+				break;
+			case TK_FLOAT:
+				pNew->typeDef.type = SQLITE_AFF_REAL;
+				break;
+			}
+		}
 		if (pToken) {
 			if (nExtra == 0) {
 				pNew->flags |= EP_IntValue;
@@ -893,6 +912,7 @@ sqlite3ExprAlloc(sqlite3 * db,	/* Handle for sqlite3DbMallocRawNN() */
  * Allocate a new expression node from a zero-terminated token that has
  * already been dequoted.
  */
+//FIXME
 Expr *
 sqlite3Expr(sqlite3 * db,	/* Handle for sqlite3DbMallocZero() (may be null) */
 	    int op,		/* Expression opcode */
@@ -902,7 +922,7 @@ sqlite3Expr(sqlite3 * db,	/* Handle for sqlite3DbMallocZero() (may be null) */
 	Token x;
 	x.z = zToken;
 	x.n = zToken ? sqlite3Strlen30(zToken) : 0;
-	return sqlite3ExprAlloc(db, op, &x, 0);
+	return sqlite3ExprAlloc(db, op, 0, &x, 0);
 }
 
 /* Allocate a new expression and initialize it as integer.
@@ -1054,10 +1074,10 @@ sqlite3ExprAnd(sqlite3 * db, Expr * pLeft, Expr * pRight)
 	} else if (exprAlwaysFalse(pLeft) || exprAlwaysFalse(pRight)) {
 		sql_expr_free(db, pLeft, false);
 		sql_expr_free(db, pRight, false);
-		return sqlite3ExprAlloc(db, TK_INTEGER, &sqlite3IntTokens[0],
+		return sqlite3ExprAlloc(db, TK_INTEGER, 0, &sqlite3IntTokens[0],
 					0);
 	} else {
-		Expr *pNew = sqlite3ExprAlloc(db, TK_AND, 0, 0);
+		Expr *pNew = sqlite3ExprAlloc(db, TK_AND, 0, 0, 0);
 		sqlite3ExprAttachSubtrees(db, pNew, pLeft, pRight);
 		return pNew;
 	}
@@ -1073,7 +1093,7 @@ sqlite3ExprFunction(Parse * pParse, ExprList * pList, Token * pToken)
 	Expr *pNew;
 	sqlite3 *db = pParse->db;
 	assert(pToken);
-	pNew = sqlite3ExprAlloc(db, TK_FUNCTION, pToken, 1);
+	pNew = sqlite3ExprAlloc(db, TK_FUNCTION, 0, pToken, 1);
 	if (pNew == 0) {
 		sqlite3ExprListDelete(db, pList);	/* Avoid memory leak when malloc fails */
 		return 0;
@@ -2966,7 +2986,7 @@ sqlite3CodeSubselect(Parse * pParse,	/* Parsing context */
 			}
 			sql_expr_free(pParse->db, pSel->pLimit, false);
 			pSel->pLimit = sqlite3ExprAlloc(pParse->db, TK_INTEGER,
-							&sqlite3IntTokens[1],
+							0, &sqlite3IntTokens[1],
 							0);
 			pSel->iLimit = 0;
 			pSel->selFlags &= ~SF_MultiValue;
@@ -3222,7 +3242,7 @@ sqlite3ExprCodeIN(Parse * pParse,	/* Parsing and code generating context */
 		assert(pk);
 
 		if (pk->nColumn == 1
-		    && tab->aCol[pk->aiColumn[0]].affinity == 'D'
+		    && tab->aCol[pk->aiColumn[0]].typeDef.type == 'D'
 		    && pk->aiColumn[0] < nVector) {
 			int reg_pk = rLhs + pk->aiColumn[0];
 			sqlite3VdbeAddOp2(v, OP_MustBeInt, reg_pk, destIfFalse);
@@ -3798,6 +3818,7 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 	case TK_AGG_COLUMN:{
 			AggInfo *pAggInfo = pExpr->pAggInfo;
 			struct AggInfo_col *pCol = &pAggInfo->aCol[pExpr->iAgg];
+			pExpr->typeDef = pCol->pExpr->typeDef;
 			if (!pAggInfo->directMode) {
 				assert(pCol->iMem > 0);
 				return pCol->iMem;
@@ -3828,18 +3849,21 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 							target, pExpr->op2);
 		}
 	case TK_INTEGER:{
+			pExpr->typeDef.type = SQLITE_AFF_INTEGER;
 			codeInteger(pParse, pExpr, 0, target);
 			return target;
 		}
 #ifndef SQLITE_OMIT_FLOATING_POINT
 	case TK_FLOAT:{
 			assert(!ExprHasProperty(pExpr, EP_IntValue));
+			pExpr->typeDef.type = SQLITE_AFF_REAL;
 			codeReal(v, pExpr->u.zToken, 0, target);
 			return target;
 		}
 #endif
 	case TK_STRING:{
 			assert(!ExprHasProperty(pExpr, EP_IntValue));
+			pExpr->typeDef.type = SQLITE_AFF_TEXT;
 			sqlite3VdbeLoadString(v, target, pExpr->u.zToken);
 			return target;
 		}
@@ -3860,6 +3884,7 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 			n = sqlite3Strlen30(z) - 1;
 			assert(z[n] == '\'');
 			zBlob = sqlite3HexToBlob(sqlite3VdbeDb(v), z, n);
+			pExpr->typeDef.type = SQLITE_AFF_BLOB;
 			sqlite3VdbeAddOp4(v, OP_Blob, n / 2, target, 0, zBlob,
 					  P4_DYNAMIC);
 			return target;
@@ -3894,9 +3919,7 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 				sqlite3VdbeAddOp2(v, OP_SCopy, inReg, target);
 				inReg = target;
 			}
-			sqlite3VdbeAddOp2(v, OP_Cast, target,
-					  sqlite3AffinityType(pExpr->u.zToken,
-							      0));
+			sqlite3VdbeAddOp2(v, OP_Cast, target, pExpr->typeDef.type);
 			testcase(usedAsColumnCache(pParse, inReg, inReg));
 			sqlite3ExprCacheAffinityChange(pParse, inReg, 1);
 			return inReg;
@@ -3947,44 +3970,96 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 			}
 			break;
 		}
-	case TK_AND:
-	case TK_OR:
-	case TK_PLUS:
-	case TK_STAR:
-	case TK_MINUS:
 	case TK_REM:
 	case TK_BITAND:
 	case TK_BITOR:
-	case TK_SLASH:
 	case TK_LSHIFT:
-	case TK_RSHIFT:
-	case TK_CONCAT:{
-			assert(TK_AND == OP_And);
-			testcase(op == TK_AND);
-			assert(TK_OR == OP_Or);
-			testcase(op == TK_OR);
-			assert(TK_PLUS == OP_Add);
-			testcase(op == TK_PLUS);
-			assert(TK_MINUS == OP_Subtract);
-			testcase(op == TK_MINUS);
+	case TK_RSHIFT:{
 			assert(TK_REM == OP_Remainder);
 			testcase(op == TK_REM);
 			assert(TK_BITAND == OP_BitAnd);
 			testcase(op == TK_BITAND);
 			assert(TK_BITOR == OP_BitOr);
 			testcase(op == TK_BITOR);
-			assert(TK_SLASH == OP_Divide);
-			testcase(op == TK_SLASH);
 			assert(TK_LSHIFT == OP_ShiftLeft);
 			testcase(op == TK_LSHIFT);
 			assert(TK_RSHIFT == OP_ShiftRight);
 			testcase(op == TK_RSHIFT);
+			r1 = sqlite3ExprCodeTemp(pParse, pExpr->pLeft,
+						 &regFree1);
+			r2 = sqlite3ExprCodeTemp(pParse, pExpr->pRight,
+						 &regFree2);
+			if (pExpr->pLeft->typeDef.type != SQLITE_AFF_INTEGER ||
+			    pExpr->pRight->typeDef.type != SQLITE_AFF_INTEGER) {
+				sqlite3ErrorMsg(pParse,
+						"Integer types only allowed");
+				break;
+			}
+			pExpr->typeDef.type = SQLITE_AFF_INTEGER;
+			sqlite3VdbeAddOp3(v, op, r2, r1, target);
+			testcase(regFree1 == 0);
+			testcase(regFree2 == 0);
+			break;
+		}
+	case TK_PLUS:
+	case TK_STAR:
+	case TK_SLASH:
+	case TK_MINUS:{
+			assert(TK_PLUS == OP_Add);
+			testcase(op == TK_PLUS);
+			assert(TK_MINUS == OP_Subtract);
+			testcase(op == TK_MINUS);
+			assert(TK_SLASH == OP_Divide);
+			testcase(op == TK_SLASH);
+			r1 = sqlite3ExprCodeTemp(pParse, pExpr->pLeft,
+						 &regFree1);
+			r2 = sqlite3ExprCodeTemp(pParse, pExpr->pRight,
+						 &regFree2);
+			if (!sqlite3IsNumericAffinity(pExpr->pLeft->typeDef.type) ||
+			    !sqlite3IsNumericAffinity(pExpr->pRight->typeDef.type)) {
+				sqlite3ErrorMsg(pParse,
+						"Numeric types only allowed");
+				break;
+			}
+			if (pExpr->pLeft->typeDef.type == pExpr->pRight->typeDef.type)
+				pExpr->typeDef.type = pExpr->pLeft->typeDef.type;
+			else
+				pExpr->typeDef.type = SQLITE_AFF_NUMERIC;
+			sqlite3VdbeAddOp3(v, op, r2, r1, target);
+			testcase(regFree1 == 0);
+			testcase(regFree2 == 0);
+			break;
+		}
+	case TK_AND:
+	case TK_OR:{
+			assert(TK_AND == OP_And);
+			testcase(op == TK_AND);
+			assert(TK_OR == OP_Or);
+			testcase(op == TK_OR);
+			r1 = sqlite3ExprCodeTemp(pParse, pExpr->pLeft,
+						 &regFree1);
+			r2 = sqlite3ExprCodeTemp(pParse, pExpr->pRight,
+						 &regFree2);
+			pExpr->typeDef.type = SQLITE_AFF_INTEGER;
+			sqlite3VdbeAddOp3(v, op, r2, r1, target);
+			testcase(regFree1 == 0);
+			testcase(regFree2 == 0);
+			break;
+		}
+	case TK_CONCAT:{
 			assert(TK_CONCAT == OP_Concat);
 			testcase(op == TK_CONCAT);
 			r1 = sqlite3ExprCodeTemp(pParse, pExpr->pLeft,
 						 &regFree1);
 			r2 = sqlite3ExprCodeTemp(pParse, pExpr->pRight,
 						 &regFree2);
+			if (pExpr->pLeft->typeDef.type != SQLITE_AFF_TEXT ||
+			    pExpr->pRight->typeDef.type != SQLITE_AFF_TEXT) {
+				sqlite3ErrorMsg(pParse,
+						"String types only allowed");
+				break;
+			}
+			pExpr->typeDef.type = SQLITE_AFF_TEXT;
 			sqlite3VdbeAddOp3(v, op, r2, r1, target);
 			testcase(regFree1 == 0);
 			testcase(regFree2 == 0);
@@ -3994,11 +4069,13 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 			Expr *pLeft = pExpr->pLeft;
 			assert(pLeft);
 			if (pLeft->op == TK_INTEGER) {
+				pExpr->typeDef.type = SQLITE_AFF_INTEGER;
 				codeInteger(pParse, pLeft, 1, target);
 				return target;
 #ifndef SQLITE_OMIT_FLOATING_POINT
 			} else if (pLeft->op == TK_FLOAT) {
 				assert(!ExprHasProperty(pExpr, EP_IntValue));
+				pExpr->typeDef.type = SQLITE_AFF_REAL;
 				codeReal(v, pLeft->u.zToken, 1, target);
 				return target;
 #endif
@@ -4054,6 +4131,15 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 						"misuse of aggregate: %s()",
 						pExpr->u.zToken);
 			} else {
+				if (pInfo->aCol)
+					pExpr->typeDef = pInfo->aCol->pExpr->typeDef;
+				else {
+					/*
+					 * Assume there is a COUNT function
+					 * But this should be fixed in a differen manner.
+					 */
+					pExpr->typeDef.type = SQLITE_AFF_INTEGER;
+				}
 				return pInfo->aFunc[pExpr->iAgg].iMem;
 			}
 			break;
@@ -4317,7 +4403,7 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 			 * floating point when extracting it from the record.
 			 */
 			if (pExpr->iColumn >= 0
-			    && pTab->aCol[pExpr->iColumn].affinity ==
+			    && pTab->aCol[pExpr->iColumn].typeDef.type ==
 			    SQLITE_AFF_REAL) {
 				sqlite3VdbeAddOp1(v, OP_RealAffinity, target);
 			}
@@ -4426,7 +4512,7 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 		}
 #ifndef SQLITE_OMIT_TRIGGER
 	case TK_RAISE:{
-			assert(pExpr->affinity == ON_CONFLICT_ACTION_ROLLBACK
+/*FIXME:			assert(pExpr->affinity == ON_CONFLICT_ACTION_ROLLBACK
 			       || pExpr->affinity == ON_CONFLICT_ACTION_ABORT
 			       || pExpr->affinity == ON_CONFLICT_ACTION_FAIL
 			       || pExpr->affinity == ON_CONFLICT_ACTION_IGNORE);
@@ -4451,7 +4537,7 @@ sqlite3ExprCodeTarget(Parse * pParse, Expr * pExpr, int target)
 						      pExpr->affinity,
 						      pExpr->u.zToken, 0, 0);
 			}
-
+*/
 			break;
 		}
 #endif

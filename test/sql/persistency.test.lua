@@ -2,7 +2,7 @@ env = require('test_run')
 test_run = env.new()
 
 -- create space
-box.sql.execute("CREATE TABLE foobar (foo PRIMARY KEY, bar)")
+box.sql.execute("CREATE TABLE foobar (foo int PRIMARY KEY, bar text)")
 
 -- prepare data
 box.sql.execute("INSERT INTO foobar VALUES (1, 'foo')")
@@ -39,7 +39,7 @@ box.sql.execute("SELECT COUNT(*) FROM foobar WHERE bar='cacodaemon'")
 -- multi-index
 
 -- create space
-box.sql.execute("CREATE TABLE barfoo (bar, foo NUM PRIMARY KEY)")
+box.sql.execute("CREATE TABLE barfoo (bar int, foo NUMERIC PRIMARY KEY)")
 box.sql.execute("CREATE UNIQUE INDEX barfoo2 ON barfoo(bar)")
 
 -- prepare data
@@ -52,7 +52,7 @@ box.sql.execute("CREATE TRIGGER tfoobar AFTER INSERT ON foobar BEGIN INSERT INTO
 box.sql.execute("SELECT * FROM \"_trigger\"");
 
 -- Many entries
-box.sql.execute("CREATE TABLE t1(a,b,c,PRIMARY KEY(b,c));")
+box.sql.execute("CREATE TABLE t1(a INT,b INT,c INT,PRIMARY KEY(b,c));")
 box.sql.execute("WITH RECURSIVE cnt(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM cnt WHERE x<1000) INSERT INTO t1 SELECT x, x%40, x/40 FROM cnt;")
 box.sql.execute("SELECT a FROM t1 ORDER BY b, a LIMIT 10 OFFSET 20;");
 
@@ -62,7 +62,7 @@ test_run:cmd('restart server default');
 box.sql.execute("SELECT * FROM \"_trigger\"");
 
 -- ... functional
-box.sql.execute("INSERT INTO foobar VALUES ('foobar trigger test', 8888)")
+box.sql.execute("INSERT INTO foobar VALUES (8888, 'foobar trigger test')")
 box.sql.execute("SELECT * FROM barfoo WHERE foo = 9999");
 
 -- and still persistent

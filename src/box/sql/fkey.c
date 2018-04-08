@@ -534,13 +534,14 @@ exprTableRegister(Parse * pParse,	/* Parsing and code generating context */
 		if (iCol >= 0 && iCol != pTab->iPKey) {
 			pCol = &pTab->aCol[iCol];
 			pExpr->iTable = regBase + iCol + 1;
-			pExpr->affinity = pCol->affinity;
+			pExpr->typeDef = pCol->typeDef;
 			zColl = column_collation_name(pTab, iCol);
 			pExpr =
 			    sqlite3ExprAddCollateString(pParse, pExpr, zColl);
 		} else {
 			pExpr->iTable = regBase;
-			pExpr->affinity = SQLITE_AFF_INTEGER;
+			//FIXME
+			pExpr->typeDef.type = SQLITE_AFF_INTEGER;
 		}
 	}
 	return pExpr;
@@ -1296,13 +1297,13 @@ fkActionTrigger(Parse * pParse,	/* Parse context */
 					   sqlite3PExpr(pParse, TK_DOT,
 							sqlite3ExprAlloc(db,
 									 TK_ID,
-									 &tOld,
+									 0, &tOld,
 									 0),
 							sqlite3ExprAlloc(db,
 									 TK_ID,
-									 &tToCol,
+									 0, &tToCol,
 									 0)),
-					   sqlite3ExprAlloc(db, TK_ID,
+					   sqlite3ExprAlloc(db, TK_ID, 0,
 							    &tFromCol, 0)
 			    );
 			pWhere = sqlite3ExprAnd(db, pWhere, pEq);
@@ -1316,17 +1317,17 @@ fkActionTrigger(Parse * pParse,	/* Parse context */
 				pEq = sqlite3PExpr(pParse, TK_IS,
 						   sqlite3PExpr(pParse, TK_DOT,
 								sqlite3ExprAlloc
-								(db, TK_ID,
+								(db, TK_ID, 0,
 								 &tOld, 0),
 								sqlite3ExprAlloc
-								(db, TK_ID,
+								(db, TK_ID, 0,
 								 &tToCol, 0)),
 						   sqlite3PExpr(pParse, TK_DOT,
 								sqlite3ExprAlloc
-								(db, TK_ID,
+								(db, TK_ID, 0,
 								 &tNew, 0),
 								sqlite3ExprAlloc
-								(db, TK_ID,
+								(db, TK_ID, 0,
 								 &tToCol, 0))
 				    );
 				pWhen = sqlite3ExprAnd(db, pWhen, pEq);
@@ -1338,11 +1339,11 @@ fkActionTrigger(Parse * pParse,	/* Parse context */
 				if (action == OE_Cascade) {
 					pNew = sqlite3PExpr(pParse, TK_DOT,
 							    sqlite3ExprAlloc(db,
-									     TK_ID,
+									     TK_ID, 0,
 									     &tNew,
 									     0),
 							    sqlite3ExprAlloc(db,
-									     TK_ID,
+									     TK_ID, 0,
 									     &tToCol,
 									     0));
 				} else if (action == OE_SetDflt) {
@@ -1355,12 +1356,12 @@ fkActionTrigger(Parse * pParse,	/* Parse context */
 					} else {
 						pNew =
 						    sqlite3ExprAlloc(db,
-								     TK_NULL, 0,
+								     TK_NULL, 0, 0,
 								     0);
 					}
 				} else {
 					pNew =
-					    sqlite3ExprAlloc(db, TK_NULL, 0, 0);
+					    sqlite3ExprAlloc(db, TK_NULL, 0, 0, 0);
 				}
 				pList =
 				    sqlite3ExprListAppend(pParse, pList, pNew);
@@ -1382,9 +1383,10 @@ fkActionTrigger(Parse * pParse,	/* Parse context */
 			pRaise =
 			    sqlite3Expr(db, TK_RAISE,
 					"FOREIGN KEY constraint failed");
+			/*FIXME
 			if (pRaise) {
 				pRaise->affinity = ON_CONFLICT_ACTION_ABORT;
-			}
+			}*/
 			pSelect = sqlite3SelectNew(pParse,
 						   sqlite3ExprListAppend(pParse,
 									 0,

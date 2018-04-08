@@ -5,7 +5,7 @@ test_run = require('test_run').new()
 -- box.cfg()
 
 -- Create space and view.
-box.sql.execute("CREATE TABLE t1(a, b, PRIMARY KEY(a, b));");
+box.sql.execute("CREATE TABLE t1(a INT, b INT, PRIMARY KEY(a, b));");
 box.sql.execute("CREATE VIEW v1 AS SELECT a+b FROM t1;");
 
 -- View can't have any indexes.

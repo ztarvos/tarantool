@@ -594,12 +594,12 @@ sqlite3StartTable(Parse *pParse, Token *pName, int noErr)
  * column.
  */
 void
-sqlite3AddColumn(Parse * pParse, Token * pName, Token * pType)
+sqlite3AddColumn(Parse * pParse, Token * pName, TypeDef * pTypeDef)
 {
+	assert(pTypeDef != NULL);
 	Table *p;
 	int i;
 	char *z;
-	char *zType;
 	Column *pCol;
 	sqlite3 *db = pParse->db;
 	if ((p = pParse->pNewTable) == 0)
@@ -638,35 +638,7 @@ sqlite3AddColumn(Parse * pParse, Token * pName, Token * pType)
 	memset(pCol, 0, sizeof(p->aCol[0]));
 	pCol->zName = z;
 
-	if (pType->n == 0) {
-		/* If there is no type specified, columns have the default affinity
-		 * 'BLOB' and type SCALAR.
-		 * TODO: since SQL standard prohibits column creation without
-		 * specified type, the code below should emit an error.
-		 */
-		pCol->affinity = SQLITE_AFF_BLOB;
-		pCol->type = FIELD_TYPE_SCALAR;
-		pCol->szEst = 1;
-	} else {
-		/* TODO: convert string of type into runtime
-		 * FIELD_TYPE value for other types.
-		 */
-		if ((sqlite3StrNICmp(pType->z, "INTEGER", 7) == 0 &&
-		     pType->n == 7) ||
-		    (sqlite3StrNICmp(pType->z, "INT", 3) == 0 &&
-		     pType->n == 3)) {
-			pCol->type = FIELD_TYPE_INTEGER;
-			pCol->affinity = SQLITE_AFF_INTEGER;
-		} else {
-			zType = sqlite3_malloc(pType->n + 1);
-			memcpy(zType, pType->z, pType->n);
-			zType[pType->n] = 0;
-			sqlite3Dequote(zType);
-			pCol->affinity = sqlite3AffinityType(zType, 0);
-			pCol->type = FIELD_TYPE_SCALAR;
-			sqlite3_free(zType);
-		}
-	}
+	pCol->typeDef = *pTypeDef;
 	p->nCol++;
 	pParse->constraintName.n = 0;
 }
@@ -1265,18 +1237,18 @@ createTableStmt(sqlite3 * db, Table * p)
 		k += sqlite3Strlen30(&zStmt[k]);
 		zSep = zSep2;
 		identPut(zStmt, &k, pCol->zName);
-		assert(pCol->affinity - SQLITE_AFF_BLOB >= 0);
-		assert(pCol->affinity - SQLITE_AFF_BLOB < ArraySize(azType));
-		testcase(pCol->affinity == SQLITE_AFF_BLOB);
-		testcase(pCol->affinity == SQLITE_AFF_TEXT);
-		testcase(pCol->affinity == SQLITE_AFF_NUMERIC);
-		testcase(pCol->affinity == SQLITE_AFF_INTEGER);
-		testcase(pCol->affinity == SQLITE_AFF_REAL);
+		assert(pCol->typeDef.type - SQLITE_AFF_BLOB >= 0);
+		assert(pCol->typeDef.type - SQLITE_AFF_BLOB < ArraySize(azType));
+		testcase(pCol->typeDef.type == SQLITE_AFF_BLOB);
+		testcase(pCol->typeDef.type == SQLITE_AFF_TEXT);
+		testcase(pCol->typeDef.type == SQLITE_AFF_NUMERIC);
+		testcase(pCol->typeDef.type == SQLITE_AFF_INTEGER);
+		testcase(pCol->typeDef.type == SQLITE_AFF_REAL);
 
-		zType = azType[pCol->affinity - SQLITE_AFF_BLOB];
+		zType = azType[pCol->typeDef.type - SQLITE_AFF_BLOB];
 		len = sqlite3Strlen30(zType);
-		assert(pCol->affinity == SQLITE_AFF_BLOB
-		       || pCol->affinity == sqlite3AffinityType(zType, 0));
+		assert(pCol->typeDef.type == SQLITE_AFF_BLOB
+		       || pCol->typeDef.type == sqlite3AffinityType(zType, 0));
 		memcpy(&zStmt[k], zType, len);
 		k += len;
 		assert(k <= n);
@@ -1370,7 +1342,7 @@ convertToWithoutRowidTable(Parse * pParse, Table * pTab)
 		sqlite3TokenInit(&ipkToken, pTab->aCol[pTab->iPKey].zName);
 		pList = sqlite3ExprListAppend(pParse, 0,
 					      sqlite3ExprAlloc(db, TK_ID,
-							       &ipkToken, 0));
+							       0, &ipkToken, 0));
 		if (pList == 0)
 			return;
 		pList->a[0].sortOrder = pParse->iPkSortOrder;
@@ -2871,7 +2843,7 @@ sqlite3CreateIndex(Parse * pParse,	/* All information about this parse */
 		Token prevCol;
 		sqlite3TokenInit(&prevCol, pTab->aCol[pTab->nCol - 1].zName);
 		pList = sqlite3ExprListAppend(pParse, 0,
-					      sqlite3ExprAlloc(db, TK_ID,
+					      sqlite3ExprAlloc(db, TK_ID, 0,
 							       &prevCol, 0));
 		if (pList == 0)
 			goto exit_create_index;

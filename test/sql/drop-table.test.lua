@@ -3,7 +3,7 @@ test_run = require('test_run').new()
 -- box.cfg()
 
 -- create space
-box.sql.execute("CREATE TABLE zzzoobar (c1, c2 PRIMARY KEY, c3, c4)")
+box.sql.execute("CREATE TABLE zzzoobar (c1 int, c2 int PRIMARY KEY, c3 varchar(20), c4 int)")
 
 -- Debug
 -- box.sql.execute("PRAGMA vdbe_debug=ON ; INSERT INTO zzzoobar VALUES (111, 222, 'c3', 444)")

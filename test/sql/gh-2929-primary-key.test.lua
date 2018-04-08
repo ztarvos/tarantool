@@ -4,11 +4,11 @@
 
 box.cfg{}
 
-box.sql.execute("CREATE TABLE t1(a INT PRIMARY KEY, b UNIQUE)")
-box.sql.execute("CREATE TABLE t2(a UNIQUE, b)")
+box.sql.execute("CREATE TABLE t1(a INT PRIMARY KEY, b int UNIQUE)")
+box.sql.execute("CREATE TABLE t2(a int UNIQUE, b int)")
 
-box.sql.execute("CREATE TABLE t3(a)")
-box.sql.execute("CREATE TABLE t4(a, b)")
-box.sql.execute("CREATE TABLE t5(a, b UNIQUE)")
+box.sql.execute("CREATE TABLE t3(a int)")
+box.sql.execute("CREATE TABLE t4(a int, b int)")
+box.sql.execute("CREATE TABLE t5(a int, b int UNIQUE)")
 
 box.sql.execute("DROP TABLE t1")

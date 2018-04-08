@@ -3,7 +3,7 @@ test_run = require('test_run').new()
 ...
 -- box.cfg()
 -- Create space.
-box.sql.execute("CREATE TABLE t3(id primary key,x,y);");
+box.sql.execute("CREATE TABLE t3(id int primary key,x int,y int);");
 ---
 ...
 box.sql.execute("CREATE UNIQUE INDEX t3y ON t3(y);");
