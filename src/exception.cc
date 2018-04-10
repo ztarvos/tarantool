@@ -36,6 +36,7 @@
 
 #include "fiber.h"
 #include "reflection.h"
+#include "backtrace.h"
 
 extern "C" {
 
@@ -93,6 +94,7 @@ static const struct method_info exception_methods[] = {
 const struct type_info type_Exception = make_type("Exception", NULL,
 	exception_methods);
 
+
 void *
 Exception::operator new(size_t size)
 {
@@ -116,11 +118,47 @@ Exception::~Exception()
 	}
 }
 
+static int
+error_backtrace_cb(int frameno, void *frameret, const char *func,
+		   size_t offset, void *cb_ctx)
+{
+	(void) frameno;
+	(void) frameret;
+	(void) offset;
+	Exception *e = (Exception *) cb_ctx;
+	if (e->frames_count == 0)
+		rlist_create(&e->frames);
+
+	struct diag_frame * frame =
+		(struct diag_frame *) malloc(sizeof(*frame));
+	if (frame == NULL) {
+		diag_set(OutOfMemory, sizeof(struct diag_frame),
+			 "malloc", "struct diag_frame");
+		return -1;
+	}
+	if (func)
+		snprintf(frame->func_name, sizeof(frame->func_name), "%s", func);
+	else
+		snprintf(frame->func_name, sizeof(frame->func_name), "?");
+	sprintf(frame->filename, "?");
+	frame->line = 0;
+	if (e->frames_count < DIAG_MAX_TRACEBACK) {
+		rlist_add_tail_entry(&e->frames, frame, link);
+		e->frames_count++;
+	}
+	return 0;
+}
+
 Exception::Exception(const struct type_info *type_arg, const char *file,
 		     unsigned line)
 {
 	error_create(this, exception_destroy, exception_raise,
 		     exception_log, type_arg, file, line);
+	if (cord()) {
+		backtrace_foreach(error_backtrace_cb, &fiber()->ctx, this);
+		rlist_shift_tail(&this->frames);
+		this->frames_count--;
+	}
 }
 
 void
