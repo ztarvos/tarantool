@@ -447,63 +447,42 @@ sqlite3Pragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 				if (pIdx) {
 					int i;
 					int mx;
-					if (pPragma->iArg) {
-						/* PRAGMA index_xinfo (newer
-						 * version with more rows and
-						 * columns)
-						 */
-						pParse->nMem = 6;
-					} else {
-						/* PRAGMA index_info (legacy
-						 * version)
-						 */
-						pParse->nMem = 3;
-					}
+					pParse->nMem = 7;
 					mx = index_column_count(pIdx);
 					assert(pParse->nMem <=
 					       pPragma->nPragCName);
 					for (i = 0; i < mx; i++) {
 						i16 cnum = pIdx->aiColumn[i];
 						assert(pIdx->pTable);
-						sqlite3VdbeMultiLoad(v, 1,
-								     "iis", i,
-								     cnum,
-								     cnum <
-								     0 ? 0 :
-								     pIdx->
-								     pTable->
-								     def->
-								     fields[cnum].
-								     name);
-						if (pPragma->iArg) {
-							const char *c_n;
-							uint32_t id;
-							struct coll *coll =
-								sql_index_collation(pIdx, i, &id);
-							if (coll != NULL)
-								c_n = coll_by_id(id)->name;
-							else
-								c_n = "BINARY";
-							enum sort_order sort_order;
-							sort_order = sql_index_column_sort_order(pIdx,
-												 i);
-							sqlite3VdbeMultiLoad(v,
-									     4,
-									     "isi",
-									     sort_order,
-									     c_n,
-									     i <
-									     mx);
-						}
+						const char *c_n;
+						uint32_t id;
+						struct coll *coll =
+							sql_index_collation(pIdx, i, &id);
+						if (coll != NULL)
+							c_n = coll_by_id(id)->name;
+						else
+							c_n = "BINARY";
+						enum sort_order sort_order;
+						sort_order = sql_index_column_sort_order(pIdx,
+											i);
+						enum field_type type = pIdx->pTable->def->
+									fields[cnum].type;
+						sqlite3VdbeMultiLoad(v, 1, "iisisis", i,
+									cnum, cnum < 0 ? 0 :
+									pIdx->pTable->def->
+									fields[cnum].name,
+									sort_order, c_n, i < mx,
+									field_type_strs[type]);
 						sqlite3VdbeAddOp2(v,
-								  OP_ResultRow,
-								  1,
-								  pParse->nMem);
+								OP_ResultRow,
+								1,
+								pParse->nMem);
 					}
 				}
 			}
 			break;
-		}
+	}
+
 	case PragTyp_INDEX_LIST:{
 			if (zRight) {
 				Index *pIdx;

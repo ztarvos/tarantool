@@ -100,6 +100,8 @@ typedef struct PragmaName {
 	u8 nPragCName;		/* Num of col names. 0 means use pragma name */
 	u32 iArg;		/* Extra argument */
 } PragmaName;
+/* The order of pragmas in this array is important: it has */
+/* to be sorted. For more info see pragma_locate function. */
 static const PragmaName aPragmaName[] = {
 	{ /* zName:     */ "busy_timeout",
 	 /* ePragTyp:  */ PragTyp_BUSY_TIMEOUT,
@@ -177,20 +179,14 @@ static const PragmaName aPragmaName[] = {
 	 /* ePragTyp:  */ PragTyp_INDEX_INFO,
 	 /* ePragFlg:  */
 	 PragFlg_NeedSchema | PragFlg_Result1 | PragFlg_SchemaOpt,
-	 /* ColNames:  */ 10, 3,
-	 /* iArg:      */ 0},
+	 /* ColNames:  */ 10, 7,
+	 /* iArg:      */ 1},
 	{ /* zName:     */ "index_list",
 	 /* ePragTyp:  */ PragTyp_INDEX_LIST,
 	 /* ePragFlg:  */
 	 PragFlg_NeedSchema | PragFlg_Result1 | PragFlg_SchemaOpt,
 	 /* ColNames:  */ 19, 5,
 	 /* iArg:      */ 0},
-	{ /* zName:     */ "index_xinfo",
-	 /* ePragTyp:  */ PragTyp_INDEX_INFO,
-	 /* ePragFlg:  */
-	 PragFlg_NeedSchema | PragFlg_Result1 | PragFlg_SchemaOpt,
-	 /* ColNames:  */ 13, 6,
-	 /* iArg:      */ 1},
 #endif
 #if defined(SQLITE_DEBUG) && !defined(SQLITE_OMIT_PARSER_TRACE)
 	{ /* zName:     */ "parser_trace",
