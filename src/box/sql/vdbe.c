@@ -77,6 +77,16 @@
 int sql_search_count = 0;
 #endif
 
+#ifdef SQLITE_TEST
+/*
+ * The following global variable is incremented in OP_RowData
+ * whenever the xfer optimization is used. This is used on
+ * testing purposes only - to make sure the transfer optimization
+ * really is happening when it is supposed to.
+ */
+int sql_xfer_count = 0;
+#endif
+
 /*
  * When this global variable is positive, it gets decremented once before
  * each instruction in the VDBE.  When it reaches zero, the u1.isInterrupted
@@ -3976,7 +3986,7 @@ case OP_SorterData: {
 	break;
 }
 
-/* Opcode: RowData P1 P2 * * *
+/* Opcode: RowData P1 P2 * * P5
  * Synopsis: r[P2]=data
  *
  * Write into register P2 the complete row content for the row at
@@ -3984,6 +3994,8 @@ case OP_SorterData: {
  * There is no interpretation of the data.
  * It is just copied onto the P2 register exactly as
  * it is found in the database file.
+ * P5 can be used in debug mode to check if xferOptimization has
+ * actually started processing.
  *
  * If cursor P1 is an index, then the content is the key of the row.
  * If cursor P2 is a table, then the content extracted is the data.
@@ -3995,6 +4007,17 @@ case OP_RowData: {
 	VdbeCursor *pC;
 	BtCursor *pCrsr;
 	u32 n;
+
+/*
+ * Flag P5 is cleared after the first insertion using xfer
+ * optimization.
+ */
+#ifdef SQLITE_TEST
+	if ((pOp->p5 & OPFLAG_XFER_OPT) != 0) {
+		pOp->p5 &= ~OPFLAG_XFER_OPT;
+		sql_xfer_count++;
+	}
+#endif
 
 	pOut = &aMem[pOp->p2];
 	memAboutToChange(p, pOut);

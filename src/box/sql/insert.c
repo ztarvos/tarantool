@@ -1628,16 +1628,6 @@ sqlite3OpenTableAndIndices(Parse * pParse,	/* Parsing context */
 	return i;
 }
 
-#ifdef SQLITE_TEST
-/*
- * The following global variable is incremented whenever the
- * transfer optimization is used.  This is used for testing
- * purposes only - to make sure the transfer optimization really
- * is happening when it is supposed to.
- */
-int sqlite3_xferopt_count;
-#endif				/* SQLITE_TEST */
-
 #ifndef SQLITE_OMIT_XFER_OPT
 /*
  * Check to see if index pSrc is compatible as a source of data
@@ -1658,6 +1648,8 @@ xferCompatibleIndex(Index * pDest, Index * pSrc)
 	assert(pDest->pTable != pSrc->pTable);
 	uint32_t nDestCol = index_column_count(pDest);
 	uint32_t nSrcCol = index_column_count(pSrc);
+	if ((pDest->idxType != pSrc->idxType))
+		return 0;
 	if (nDestCol != nSrcCol) {
 		return 0;	/* Different number of columns */
 	}
@@ -1723,11 +1715,9 @@ xferOptimization(Parse * pParse,	/* Parser context */
 	int iSrc, iDest;	/* Cursors from source and destination */
 	int addr1;		/* Loop addresses */
 	int emptyDestTest = 0;	/* Address of test for empty pDest */
-	int emptySrcTest = 0;	/* Address of test for empty pSrc */
-	Vdbe *v;		/* The VDBE we are building */
-	int destHasUniqueIdx = 0;	/* True if pDest has a UNIQUE index */
 	int regData, regTupleid;	/* Registers holding data and tupleid */
 	struct session *user_session = current_session();
+	bool is_err_action_default = false;
 
 	if (pSelect == NULL)
 		return 0;	/* Must be of the form  INSERT INTO ... SELECT ... */
@@ -1742,10 +1732,8 @@ xferOptimization(Parse * pParse,	/* Parser context */
 	if (space_trigger_list(pDest->def->id) != NULL)
 		return 0;
 	if (onError == ON_CONFLICT_ACTION_DEFAULT) {
-		if (pDest->iPKey >= 0)
-			onError = pDest->keyConf;
-		if (onError == ON_CONFLICT_ACTION_DEFAULT)
-			onError = ON_CONFLICT_ACTION_ABORT;
+		onError = ON_CONFLICT_ACTION_ABORT;
+		is_err_action_default = true;
 	}
 	assert(pSelect->pSrc);	/* allocated even if there is no FROM clause */
 	if (pSelect->pSrc->nSrc != 1) {
@@ -1807,6 +1795,11 @@ xferOptimization(Parse * pParse,	/* Parser context */
 	/* Both tables must have the same INTEGER PRIMARY KEY. */
 	if (pDest->iPKey != pSrc->iPKey)
 		return 0;
+	uint32_t src_space_id = SQLITE_PAGENO_TO_SPACEID(pSrc->tnum);
+	struct space *src_space = space_by_id(src_space_id);
+	uint32_t dest_space_id = SQLITE_PAGENO_TO_SPACEID(pDest->tnum);
+	struct space *dest_space = space_by_id(dest_space_id);
+	assert(src_space != NULL && dest_space != NULL);
 	for (i = 0; i < (int)pDest->def->field_count; i++) {
 		enum affinity_type dest_affinity =
 			pDest->def->fields[i].affinity;
@@ -1826,15 +1819,6 @@ xferOptimization(Parse * pParse,	/* Parser context */
 		}
 		/* Default values for second and subsequent columns need to match. */
 		if (i > 0) {
-			uint32_t src_space_id =
-				SQLITE_PAGENO_TO_SPACEID(pSrc->tnum);
-			struct space *src_space =
-				space_cache_find(src_space_id);
-			uint32_t dest_space_id =
-				SQLITE_PAGENO_TO_SPACEID(pDest->tnum);
-			struct space *dest_space =
-				space_cache_find(dest_space_id);
-			assert(src_space != NULL && dest_space != NULL);
 			char *src_expr_str =
 				src_space->def->fields[i].default_value;
 			char *dest_expr_str =
@@ -1848,9 +1832,6 @@ xferOptimization(Parse * pParse,	/* Parser context */
 		}
 	}
 	for (pDestIdx = pDest->pIndex; pDestIdx; pDestIdx = pDestIdx->pNext) {
-		if (index_is_unique(pDestIdx)) {
-			destHasUniqueIdx = 1;
-		}
 		for (pSrcIdx = pSrc->pIndex; pSrcIdx; pSrcIdx = pSrcIdx->pNext) {
 			if (xferCompatibleIndex(pDestIdx, pSrcIdx))
 				break;
@@ -1860,10 +1841,8 @@ xferOptimization(Parse * pParse,	/* Parser context */
 		}
 	}
 	/* Get server checks. */
-	ExprList *pCheck_src = space_checks_expr_list(
-		SQLITE_PAGENO_TO_SPACEID(pSrc->tnum));
-	ExprList *pCheck_dest = space_checks_expr_list(
-		SQLITE_PAGENO_TO_SPACEID(pDest->tnum));
+	ExprList *pCheck_src = space_checks_expr_list(src_space_id);
+	ExprList *pCheck_dest = space_checks_expr_list(dest_space_id);
 	if (pCheck_dest != NULL &&
 	    sqlite3ExprListCompare(pCheck_src, pCheck_dest, -1) != 0) {
 		/* Tables have different CHECK constraints.  Ticket #2252 */
@@ -1888,74 +1867,62 @@ xferOptimization(Parse * pParse,	/* Parser context */
 	 * least a possibility, though it might only work if the destination
 	 * table (tab1) is initially empty.
 	 */
-#ifdef SQLITE_TEST
-	sqlite3_xferopt_count++;
-#endif
-	v = sqlite3GetVdbe(pParse);
+
+	/* The Vdbe struct we're building. */
+	struct Vdbe *v = sqlite3GetVdbe(pParse);
 	iSrc = pParse->nTab++;
 	iDest = pParse->nTab++;
 	regData = sqlite3GetTempReg(pParse);
 	regTupleid = sqlite3GetTempReg(pParse);
-	sqlite3OpenTable(pParse, iDest, pDest, OP_OpenWrite);
-	assert(destHasUniqueIdx);
-	if ((pDest->iPKey < 0 && pDest->pIndex != 0)	/* (1) */
-	    ||destHasUniqueIdx	/* (2) */
-	    || (onError != ON_CONFLICT_ACTION_ABORT
-		&& onError != ON_CONFLICT_ACTION_ROLLBACK)	/* (3) */
-	    ) {
-		/* In some circumstances, we are able to run the xfer optimization
-		 * only if the destination table is initially empty.
-		 * This block generates code to make
-		 * that determination.
-		 *
-		 * Conditions under which the destination must be empty:
-		 *
-		 * (1) There is no INTEGER PRIMARY KEY but there are indices.
-		 *
-		 * (2) The destination has a unique index.  (The xfer optimization
-		 *     is unable to test uniqueness.)
-		 *
-		 * (3) onError is something other than ON_CONFLICT_ACTION_ABORT and _ROLLBACK.
-		 */
+
+	vdbe_emit_open_cursor(pParse, iDest, 0, dest_space);
+	VdbeComment((v, "%s", pDest->def->name));
+
+	/*
+	 * Xfer optimization is unable to correctly insert data
+	 * in case there's a conflict action other than *_ABORT,
+	 * *_FAIL or *_IGNORE. This is the reason we want to only
+	 * run it if the destination table is initially empty.
+	 * That block generates code to make that determination.
+	 */
+	if (!(onError == ON_CONFLICT_ACTION_ABORT ||
+	    onError == ON_CONFLICT_ACTION_FAIL ||
+	    onError == ON_CONFLICT_ACTION_IGNORE) ||
+	    is_err_action_default) {
 		addr1 = sqlite3VdbeAddOp2(v, OP_Rewind, iDest, 0);
 		VdbeCoverage(v);
 		emptyDestTest = sqlite3VdbeAddOp0(v, OP_Goto);
 		sqlite3VdbeJumpHere(v, addr1);
 	}
 
-	for (pDestIdx = pDest->pIndex; pDestIdx; pDestIdx = pDestIdx->pNext) {
-		for (pSrcIdx = pSrc->pIndex; ALWAYS(pSrcIdx);
-		     pSrcIdx = pSrcIdx->pNext) {
-			if (xferCompatibleIndex(pDestIdx, pSrcIdx))
-				break;
-		}
-		assert(pSrcIdx);
-		struct space *src_space =
-			space_by_id(SQLITE_PAGENO_TO_SPACEID(pSrcIdx->tnum));
-		vdbe_emit_open_cursor(pParse, iSrc,
-				      SQLITE_PAGENO_TO_INDEXID(pSrcIdx->tnum),
-				      src_space);
-		VdbeComment((v, "%s", pSrcIdx->zName));
-		struct space *dest_space =
-			space_by_id(SQLITE_PAGENO_TO_SPACEID(pDestIdx->tnum));
-		vdbe_emit_open_cursor(pParse, iDest,
-				      SQLITE_PAGENO_TO_INDEXID(pDestIdx->tnum),
-				      dest_space);
-		VdbeComment((v, "%s", pDestIdx->zName));
-		addr1 = sqlite3VdbeAddOp2(v, OP_Rewind, iSrc, 0);
-		VdbeCoverage(v);
-		sqlite3VdbeAddOp2(v, OP_RowData, iSrc, regData);
-		sqlite3VdbeAddOp2(v, OP_IdxInsert, iDest, regData);
-		if (pDestIdx->idxType == SQLITE_IDXTYPE_PRIMARYKEY)
-			sqlite3VdbeChangeP5(v, OPFLAG_NCHANGE);
-		sqlite3VdbeAddOp2(v, OP_Next, iSrc, addr1 + 1);
-		VdbeCoverage(v);
-		sqlite3VdbeJumpHere(v, addr1);
-		sqlite3VdbeAddOp2(v, OP_Close, iSrc, 0);
-		sqlite3VdbeAddOp2(v, OP_Close, iDest, 0);
+	vdbe_emit_open_cursor(pParse, iSrc, 0, src_space);
+	VdbeComment((v, "%s", pSrc->def->name));
+	addr1 = sqlite3VdbeAddOp2(v, OP_Rewind, iSrc, 0);
+	VdbeCoverage(v);
+	sqlite3VdbeAddOp2(v, OP_RowData, iSrc, regData);
+
+#ifdef SQLITE_TEST
+	sqlite3VdbeChangeP5(v, OPFLAG_XFER_OPT);
+#endif
+
+	sqlite3VdbeAddOp2(v, OP_IdxInsert, iDest, regData);
+	switch (onError) {
+	case ON_CONFLICT_ACTION_IGNORE:
+		sqlite3VdbeChangeP5(v, OPFLAG_OE_IGNORE | OPFLAG_NCHANGE);
+		break;
+	case ON_CONFLICT_ACTION_FAIL:
+		sqlite3VdbeChangeP5(v, OPFLAG_OE_FAIL | OPFLAG_NCHANGE);
+		break;
+	default:
+		sqlite3VdbeChangeP5(v, OPFLAG_NCHANGE);
+		break;
 	}
-	if (emptySrcTest)
-		sqlite3VdbeJumpHere(v, emptySrcTest);
+	sqlite3VdbeAddOp2(v, OP_Next, iSrc, addr1 + 1);
+	VdbeCoverage(v);
+	sqlite3VdbeJumpHere(v, addr1);
+	sqlite3VdbeAddOp2(v, OP_Close, iSrc, 0);
+	sqlite3VdbeAddOp2(v, OP_Close, iDest, 0);
+
 	sqlite3ReleaseTempReg(pParse, regTupleid);
 	sqlite3ReleaseTempReg(pParse, regData);
 	if (emptyDestTest) {
