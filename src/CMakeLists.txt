@@ -13,6 +13,8 @@ include_directories(${MSGPUCK_INCLUDE_DIRS})
 include_directories(${CURL_INCLUDE_DIRS})
 include_directories(${ICU_INCLUDE_DIRS})
 
+include_directories("${CMAKE_SOURCE_DIR}/src/lib/pmdk/src/include")
+
 set(LIBUTIL_FREEBSD_SRC ${CMAKE_SOURCE_DIR}/third_party/libutil_freebsd)
 include_directories(${LIBUTIL_FREEBSD_SRC})
 
@@ -110,6 +112,7 @@ target_link_libraries(core
     ${LIBEIO_LIBRARIES}
     ${LIBCORO_LIBRARIES}
     ${MSGPUCK_LIBRARIES}
+    ${CMAKE_BINARY_DIR}/src/lib/pmdk/libpmem.a
 )
 
 add_library(stat STATIC rmean.c latency.c histogram.c)

@@ -42,6 +42,7 @@
 #include "coio_task.h"
 #include "replication.h"
 
+#include "libpmem.h"
 
 const char *wal_mode_STRS[] = { "none", "write", "fsync", NULL };
 
@@ -117,7 +118,11 @@ struct wal_writer
 	 * Used for replication relays.
 	 */
 	struct rlist watchers;
-};
+
+	void *pmemaddr, *pmemcur;
+	size_t mapped_len;
+	int is_pmem;
+	};
 
 struct wal_msg: public cmsg {
 	/** Input queue, on output contains all committed requests. */
@@ -284,6 +289,12 @@ wal_writer_create(struct wal_writer *writer, enum wal_mode wal_mode,
 	vclock_copy(&writer->vclock, vclock);
 
 	rlist_create(&writer->watchers);
+
+        /* create a pmem file and memory map it */
+	writer->pmemaddr = pmem_map_file("/mnt/pmem12/log", 1024 * 1024 * 1024,
+				PMEM_FILE_CREATE|PMEM_FILE_EXCL,
+				0666, &writer->mapped_len, &writer->is_pmem);
+	writer->pmemcur = writer->pmemaddr;
 }
 
 /** Destroy a WAL writer structure. */
@@ -707,12 +718,35 @@ wal_thread_f(va_list ap)
 	return 0;
 }
 
+int64_t
+wal_write(struct journal *journal, struct journal_entry *entry)
+{
+	struct wal_writer *writer = (struct wal_writer *) journal;
+	wal_assign_lsn(writer, entry->rows, entry->rows + entry->n_rows);
+	entry->res = vclock_sum(&writer->vclock);
+
+	struct xrow_header **row = entry->rows;
+	for (; row < entry->rows + entry->n_rows; row++) {
+		(*row)->tm = ev_now(loop());
+		/** encode row into iovec */
+		struct iovec iov[XROW_IOVMAX];
+		/** don't write sync to the disk */
+		int iovcnt = xrow_header_encode(*row, 0, iov, 0);
+		for (int i = 0; i < iovcnt; ++i) {
+			memcpy(writer->pmemcur, iov[i].iov_base, iov[i].iov_len);
+			writer->pmemcur = (char *)writer->pmemcur + iov[i].iov_len;
+		}
+	}
+	fiber_reschedule();
+	return entry->res;
+}
+
 /**
  * WAL writer main entry point: queue a single request
  * to be written to disk and wait until this task is completed.
  */
 int64_t
-wal_write(struct journal *journal, struct journal_entry *entry)
+wal_write2(struct journal *journal, struct journal_entry *entry)
 {
 	struct wal_writer *writer = (struct wal_writer *) journal;
 

@@ -31,3 +31,6 @@
 	path = third_party/luarocks
 	url = https://github.com/tarantool/luarocks.git
 	branch = tarantool-1.7
+[submodule "src/lib/pmdk"]
+	path = src/lib/pmdk
+	url = https://github.com/pmem/pmdk
