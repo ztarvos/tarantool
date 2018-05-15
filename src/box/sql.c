@@ -47,6 +47,7 @@
 #include "box.h"
 #include "txn.h"
 #include "space.h"
+#include "memtx_space.h"
 #include "space_def.h"
 #include "index_def.h"
 #include "tuple.h"
@@ -446,6 +447,18 @@ int tarantoolSqlite3EphemeralDrop(BtCursor *pCur)
 	space_delete_ephemeral(pCur->space);
 	pCur->space = NULL;
 	return SQLITE_OK;
+}
+
+/**
+ * Get next rowid for an ephemeral table.
+ */
+uint64_t
+tarantool_ephemeral_next_rowid(BtCursor *bt_cur)
+{
+	assert(bt_cur);
+	assert(bt_cur->curFlags & BTCF_TEphemCursor);
+	struct memtx_space * ephem_space = (struct memtx_space *) bt_cur->space;
+	return ephem_space->next_rowid++;
 }
 
 static inline int
@@ -1080,7 +1093,6 @@ key_alloc(BtCursor *cur, size_t key_size)
 		}
 		cur->key = new_key;
 	}
-	cur->nKey = key_size;
 	return 0;
 }
 
@@ -1619,37 +1631,6 @@ sql_debug_info(struct info_handler *h)
 	info_append_int(h, "sql_sort_count", sql_sort_count);
 	info_append_int(h, "sql_found_count", sql_found_count);
 	info_end(h);
-}
-
-/*
- * Extract maximum integer value from ephemeral space.
- * If index is empty - return 0 in max_id and success status.
- *
- * @param pCur Cursor pointing to ephemeral space.
- * @param fieldno Number of field from fetching tuple.
- * @param[out] max_id Fetched max value.
- *
- * @retval 0 on success, -1 otherwise.
- */
-int tarantoolSqlite3EphemeralGetMaxId(BtCursor *pCur, uint32_t fieldno,
-				       uint64_t *max_id)
-{
-	struct space *ephem_space = pCur->space;
-	assert(ephem_space);
-	struct index *primary_index = *ephem_space->index;
-
-	struct tuple *tuple;
-	if (index_max(primary_index, NULL, 0, &tuple) != 0) {
-		return SQL_TARANTOOL_ERROR;
-	}
-	if (tuple == NULL) {
-		*max_id = 0;
-		return SQLITE_OK;
-	}
-	if (tuple_field_u64(tuple, fieldno, max_id) == -1)
-		return SQL_TARANTOOL_ERROR;
-
-	return SQLITE_OK;
 }
 
 int

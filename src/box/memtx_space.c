@@ -843,6 +843,8 @@ static void
 memtx_init_ephemeral_space(struct space *space)
 {
 	memtx_space_add_primary_key(space);
+	struct memtx_space * ephem_space = (struct memtx_space *) space;
+	ephem_space->next_rowid = 0;
 }
 
 static int
