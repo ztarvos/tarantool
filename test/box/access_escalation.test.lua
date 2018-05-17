@@ -60,10 +60,25 @@ connection:close()
 -- create a deprived user
 
 box.schema.user.create('underprivileged')
-box.schema.user.grant('underprivileged', 'read,write', 'space', '_func')
+box.schema.user.grant('underprivileged', 'read,write', 'universe')
 box.session.su('underprivileged')
 box.schema.func.create('setuid', {setuid=true})
+box.schema.func.drop('setuid')
 box.session.su('admin')
+-- user needs read access because of auto_increment in func.create.
+box.schema.user.revoke('underprivileged', 'write', 'universe')
+box.schema.user.grant('underprivileged', 'create', 'universe')
+-- check drop other user's func
+box.schema.func.create('setuid2', {setuid=true})
+box.session.su('underprivileged')
+box.schema.func.create('setuid', {setuid=true})
+box.schema.func.drop('setuid2')
+box.session.su('admin')
+box.schema.user.grant('underprivileged', 'drop', 'universe')
+box.session.su('underprivileged')
+box.schema.func.drop('setuid2')
+box.session.su('admin')
+
 --
 -- create a deprived function
 --

@@ -37,6 +37,7 @@
 #include "scoped_guard.h"
 #include "version.h"
 #include "user.h"
+#include "session.h"
 #include <stdio.h>
 /**
  * @module Data Dictionary
@@ -520,6 +521,70 @@ sequence_cache_delete(uint32_t id)
 	}
 }
 
+
+/**
+ * Runs simple read, usage checks.
+ * All other checks are postponed.
+ */
+static int
+sys_read_access_check(struct space *space, user_access_t access)
+{
+	credentials *cr = effective_user();
+	if (~cr->universal_access & PRIV_U) {
+		struct user *user = user_find(cr->uid);
+		if (user != NULL)
+			diag_set(AccessDeniedError,
+				 priv_name(PRIV_U),
+				 schema_object_name(SC_UNIVERSE),
+				 "",
+				 user->def->name);
+		return -1;
+	}
+	if (access == PRIV_R) {
+		uint32_t access = cr->universal_access |
+			space->access[cr->auth_token].effective;
+		if (~access & PRIV_R) {
+			struct user *user = user_find(cr->uid);
+			if (user != NULL)
+				diag_set(AccessDeniedError,
+					 priv_name(PRIV_R),
+					 schema_object_name(SC_SPACE),
+					 space->def->name,
+					 user->def->name);
+			return -1;
+		}
+	}
+	/* Other checks are postponed to trigger*/
+	return 0;
+}
+
+/**
+ * Runs simple read, usage, write checks.
+ * All other checks are postponed.
+ */
+static int
+sys_read_write_access_check(struct space *space, user_access_t access)
+{
+	credentials *cr = effective_user();
+	if (access == PRIV_W) {
+		uint32_t has_access = space->access[cr->auth_token].effective
+				      | cr->universal_access;
+		if (~has_access & access) {
+			struct user *user = user_find(cr->uid);
+			if (user != NULL) {
+				diag_set(AccessDeniedError,
+					 priv_name(access),
+					 schema_object_name(SC_SPACE),
+					 space->def->name,
+					 user->def->name);
+			}
+			return -1;
+		}
+		return 0;
+	}
+	return sys_read_access_check(space, access);
+}
+
 const char *
 schema_find_name(enum schema_object_type type, uint32_t object_id)
 {
@@ -562,3 +627,28 @@ schema_find_name(enum schema_object_type type, uint32_t object_id)
 	return "(nil)";
 }
 
+access_check_func_t
+get_access_check_func(uint32_t space_id)
+{
+	switch (space_id) {
+	case BOX_CLUSTER_ID:
+	case BOX_COLLATION_ID:
+		return sys_read_write_access_check;
+	case BOX_SCHEMA_ID:
+	case BOX_SPACE_ID:
+	case BOX_TRUNCATE_ID:
+	case BOX_INDEX_ID:
+	case BOX_FUNC_ID:
+	case BOX_USER_ID:
+	case BOX_SEQUENCE_ID:
+	case BOX_SEQUENCE_DATA_ID:
+	case BOX_SPACE_SEQUENCE_ID:
+	case BOX_PRIV_ID:
+		/*
+		 * Specialized access checks will be performed in trigger.
+		 */
+		return sys_read_access_check;
+	default:
+		return access_check_user_space;
+	}
+}

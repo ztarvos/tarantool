@@ -1389,10 +1389,7 @@ box.schema.func.create('test_func')
 box.session.su("admin")
 ---
 ...
-box.schema.user.grant("tester", "read", "universe")
----
-...
--- failed create
+-- failed create because of auto_increment
 box.session.su("tester")
 ---
 ...
@@ -1402,27 +1399,51 @@ box.schema.space.create("test_space")
 ...
 box.schema.user.create('test_user')
 ---
-- error: Write access to space '_user' is denied for user 'tester'
+- error: Read access to space '_user' is denied for user 'tester'
 ...
 box.schema.func.create('test_func')
 ---
-- error: Write access to space '_func' is denied for user 'tester'
+- error: Read access to space '_func' is denied for user 'tester'
+...
+box.schema.sequence.create('test_seq')
+---
+- error: Read access to space '_sequence' is denied for user 'tester'
 ...
 box.session.su("admin")
 ---
 ...
---
--- FIXME 2.0: we still need to grant 'write' on universe
--- explicitly since we still use process_rw to write to system
--- tables from ddl
---
-box.schema.user.grant("tester", "create,write", "universe")
+box.schema.user.grant("tester", "read", "universe")
 ---
 ...
 box.session.su("tester")
 ---
 ...
--- successful create
+box.schema.space.create("test_space")
+---
+- error: Write access to space '_schema' is denied for user 'tester'
+...
+box.schema.user.create('test_user')
+---
+- error: Create access to user 'test_user' is denied for user 'tester'
+...
+box.schema.func.create('test_func')
+---
+- error: Create access to function 'test_func' is denied for user 'tester'
+...
+box.schema.sequence.create('test_seq')
+---
+- error: Create access to sequence 'test_seq' is denied for user 'tester'
+...
+box.session.su("admin")
+---
+...
+box.schema.user.grant("tester", "create", "universe")
+---
+...
+box.session.su("tester")
+---
+...
+-- successful create. Note user still needs read privilege because of auto_increment.
 s1 = box.schema.space.create("test_space")
 ---
 ...
@@ -1477,10 +1498,16 @@ box.schema.func.drop("test")
 box.session.su("admin")
 ---
 ...
+box.schema.user.revoke("tester", "create", "universe")
+---
+...
 box.schema.user.grant("tester", "drop", "universe")
 ---
 ...
--- successful drop
+-- successful truncate, drop
+box.session.su("tester", s.truncate, s)
+---
+...
 box.session.su("tester", s.drop, s)
 ---
 ...

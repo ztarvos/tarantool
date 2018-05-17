@@ -261,7 +261,7 @@ box.schema.user.grant('grantee', 'role')
 --
 box.session.su('admin')
 _ = box.schema.space.create('test')
-box.schema.user.grant('john', 'read,write,execute', 'universe')
+box.schema.user.grant('john', 'read', 'universe')
 box.session.su('john')
 box.schema.user.grant('grantee', 'role')
 box.schema.user.grant('grantee', 'read', 'space', 'test')
@@ -272,11 +272,18 @@ box.schema.user.grant('grantee', 'read', 'space', 'test')
 --
 box.schema.user.grant('grantee', 'public')
 --
--- revoking role 'public' is another deal - only the
--- superuser can do that, and even that would be useless,
+-- revoking role 'public' is another deal:
+-- the superuser or creator of user can do that, and even that would be useless,
 -- since one can still re-grant it back to oneself.
 --
 box.schema.user.revoke('grantee', 'public')
+box.session.su("admin")
+box.schema.user.grant("john", "create", 'universe')
+box.session.su('john')
+box.schema.user.create("grantee2")
+-- must be ok
+box.schema.user.revoke('grantee2', 'public')
+box.schema.user.drop('grantee2')
 
 box.session.su('admin')
 box.schema.user.drop('john')

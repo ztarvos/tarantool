@@ -205,6 +205,7 @@ sysview_engine_create_space(struct engine *engine, struct space_def *def,
 		free(space);
 		return NULL;
 	}
+	space->access_check = access_check_user_space;
 	return space;
 }
 

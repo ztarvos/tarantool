@@ -520,22 +520,25 @@ box.schema.space.create("test_space")
 box.schema.user.create('test_user')
 box.schema.func.create('test_func')
 box.session.su("admin")
-box.schema.user.grant("tester", "read", "universe")
--- failed create
+-- failed create because of auto_increment
 box.session.su("tester")
 box.schema.space.create("test_space")
 box.schema.user.create('test_user')
 box.schema.func.create('test_func')
-box.session.su("admin")
+box.schema.sequence.create('test_seq')
 
---
--- FIXME 2.0: we still need to grant 'write' on universe
--- explicitly since we still use process_rw to write to system
--- tables from ddl
---
-box.schema.user.grant("tester", "create,write", "universe")
+box.session.su("admin")
+box.schema.user.grant("tester", "read", "universe")
 box.session.su("tester")
--- successful create
+
+box.schema.space.create("test_space")
+box.schema.user.create('test_user')
+box.schema.func.create('test_func')
+box.schema.sequence.create('test_seq')
+box.session.su("admin")
+box.schema.user.grant("tester", "create", "universe")
+box.session.su("tester")
+-- successful create. Note user still needs read privilege because of auto_increment.
 s1 = box.schema.space.create("test_space")
 _ = s1:create_index("primary")
 _ = box.schema.user.create('test_user')
@@ -557,14 +560,18 @@ box.schema.func.drop('test_func')
 
 -- failed drop
 -- box.session.su("tester", s.drop, s)
+
 s:drop()
 seq:drop()
 box.schema.user.drop("test")
 box.schema.func.drop("test")
-
 box.session.su("admin")
+
+
+box.schema.user.revoke("tester", "create", "universe")
 box.schema.user.grant("tester", "drop", "universe")
--- successful drop
+-- successful truncate, drop
+box.session.su("tester", s.truncate, s)
 box.session.su("tester", s.drop, s)
 box.session.su("tester", seq.drop, seq)
 box.session.su("tester", box.schema.user.drop, "test")

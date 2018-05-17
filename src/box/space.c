@@ -44,7 +44,7 @@
 #include "iproto_constants.h"
 
 int
-access_check_space(struct space *space, user_access_t access)
+access_check_user_space(struct space *space, user_access_t access)
 {
 	struct credentials *cr = effective_user();
 	/* Any space access also requires global USAGE privilege. */
@@ -132,6 +132,7 @@ space_create(struct space *space, struct engine *engine,
 	rlist_create(&space->on_replace);
 	rlist_create(&space->on_stmt_begin);
 	space->run_triggers = true;
+	space->access_check = get_access_check_func(def->id);
 
 	space->format = format;
 	if (format != NULL)

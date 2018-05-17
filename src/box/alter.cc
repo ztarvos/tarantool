@@ -80,34 +80,22 @@ access_check_ddl(const char *name, uint32_t owner_uid,
 	 * were added in 1.7.7 only.
 	 */
 	if (is_17_compat_mode && has_access & PRIV_R && has_access & PRIV_W)
-		has_access |= PRIV_C | PRIV_A;
-
-	user_access_t access = ((PRIV_U | (user_access_t) priv_type) &
-				~has_access);
+		has_access |= PRIV_C | PRIV_A | PRIV_D;
+	user_access_t access = ((user_access_t) priv_type & ~has_access);
 	bool is_owner = owner_uid == cr->uid || cr->uid == ADMIN;
 	/*
 	 * Only the owner of the object or someone who has
-	 * specific DDL privilege on the object can execute
-	 * DDL. If a user has no USAGE access and is owner,
-	 * deny access as well.
+	 * specific DDL privilege on the object can execute DDL.
 	 */
-	if (access == 0 || (is_owner && !(access & PRIV_U)))
+	if (access == 0 || is_owner)
 		return; /* Access granted. */
 
 	struct user *user = user_find_xc(cr->uid);
-	if (is_owner) {
-		tnt_raise(AccessDeniedError,
-			  priv_name(PRIV_U),
-			  schema_object_name(SC_UNIVERSE),
-			  "",
-			  user->def->name);
-	} else {
-		tnt_raise(AccessDeniedError,
-			  priv_name(access),
-			  schema_object_name(type),
-			  name,
-			  user->def->name);
-	}
+	tnt_raise(AccessDeniedError,
+		  priv_name(access),
+		  schema_object_name(type),
+		  name,
+		  user->def->name);
 }
 
 /**
@@ -1551,7 +1539,8 @@ on_replace_dd_space(struct trigger * /* trigger */, void *event)
 		struct space_def *def =
 			space_def_new_from_tuple(new_tuple, ER_CREATE_SPACE,
 						 region);
-		access_check_ddl(def->name, def->uid, SC_SPACE, PRIV_C, true);
+		/* When object is not created, we assume ADMIN owns it */
+		access_check_ddl(def->name, ADMIN, SC_SPACE, PRIV_C, true);
 		auto def_guard =
 			make_scoped_guard([=] { space_def_delete(def); });
 		RLIST_HEAD(empty_list);
@@ -1908,9 +1897,17 @@ on_replace_dd_truncate(struct trigger * /* trigger */, void *event)
 			  space_name(old_space));
 
 	/*
-	 * Check if a write privilege was given, raise an error if not.
+	 * Perform checks on write or drop specific for space being truncated.
+	 * Then check ddl if the user is owner.
 	 */
-	access_check_space_xc(old_space, PRIV_W);
+	credentials *cr = effective_user();
+	uint32_t has_access = cr->universal_access |
+			      old_space->access[cr->auth_token].effective;
+	if (!(has_access & (PRIV_W | PRIV_D))) {
+		access_check_ddl(old_space->def->name, old_space->def->uid,
+				 SC_SPACE,
+				 PRIV_D, true);
+	}
 
 	struct alter_space *alter = alter_space_new(old_space);
 	auto scoped_guard =
@@ -2110,7 +2107,8 @@ on_replace_dd_user(struct trigger * /* trigger */, void *event)
 	struct user *old_user = user_by_id(uid);
 	if (new_tuple != NULL && old_user == NULL) { /* INSERT */
 		struct user_def *user = user_def_new_from_tuple(new_tuple);
-		access_check_ddl(user->name, user->owner, SC_USER, PRIV_C, true);
+		/* When object is not created, we assume ADMIN owns it */
+		access_check_ddl(user->name, ADMIN, SC_USER, PRIV_C, true);
 		auto def_guard = make_scoped_guard([=] { free(user); });
 		(void) user_cache_replace(user);
 		def_guard.is_active = false;
@@ -2248,7 +2246,8 @@ on_replace_dd_func(struct trigger * /* trigger */, void *event)
 	struct func *old_func = func_by_id(fid);
 	if (new_tuple != NULL && old_func == NULL) { /* INSERT */
 		struct func_def *def = func_def_new_from_tuple(new_tuple);
-		access_check_ddl(def->name, def->uid, SC_FUNCTION, PRIV_C, true);
+		/* When object is not created, we assume ADMIN owns it */
+		access_check_ddl(def->name, ADMIN, SC_FUNCTION, PRIV_C, true);
 		auto def_guard = make_scoped_guard([=] { free(def); });
 		func_cache_replace(def);
 		def_guard.is_active = false;
@@ -2496,9 +2495,11 @@ priv_def_create_from_tuple(struct priv_def *priv, struct tuple *tuple)
 static void
 priv_def_check(struct priv_def *priv, enum priv_type priv_type)
 {
-	struct user *grantor = user_find_xc(priv->grantor_id);
 	/* May be a role */
 	struct user *grantee = user_by_id(priv->grantee_id);
+	credentials *cr = effective_user();
+	struct user *grantor = user_find_xc(cr->uid);
+
 	if (grantee == NULL) {
 		tnt_raise(ClientError, ER_NO_SUCH_USER,
 			  int2str(priv->grantee_id));
@@ -2561,16 +2562,23 @@ priv_def_check(struct priv_def *priv, enum priv_type priv_type)
 				  int2str(priv->object_id));
 		}
 		/*
-		 * Only the creator of the role can grant or revoke it.
-		 * Everyone can grant 'PUBLIC' role.
+		 * Only the creator or owner of grantee of the role
+		 * or user with appropriate privileges can grant or revoke it.
+		 * If role is 'PUBLIC' it is allowed to grant for anyone,
+		 * Revoke 'PUBLIC' is allowed only to users who has drop access.
+		 * The latter case is required for dropping users.
 		 */
 		if (role->def->owner != grantor->def->uid &&
-		    grantor->def->uid != ADMIN &&
-		    (role->def->uid != PUBLIC || priv->access != PRIV_X)) {
-			tnt_raise(AccessDeniedError,
-				  priv_name(priv_type),
-				  schema_object_name(SC_ROLE), name,
-				  grantor->def->name);
+		    grantor->def->uid != grantee->def->owner &&
+			!((role->def->uid == PUBLIC) &&
+			  (((cr->universal_access & PRIV_D)
+			    || priv_type == PRIV_GRANT)
+			   && priv->access == PRIV_X))) {
+				tnt_raise(AccessDeniedError,
+					  priv_name(priv_type),
+					  schema_object_name(SC_ROLE),
+					  name,
+					  grantor->def->name);
 		}
 		/* Not necessary to do during revoke, but who cares. */
 		role_check(grantee, role);
@@ -2716,31 +2724,60 @@ on_replace_dd_schema(struct trigger * /* trigger */, void *event)
 	struct tuple *new_tuple = stmt->new_tuple;
 	const char *key = tuple_field_cstr_xc(new_tuple ? new_tuple : old_tuple,
 					      BOX_SCHEMA_FIELD_KEY);
-	if (strcmp(key, "cluster") == 0) {
-		if (new_tuple == NULL)
-			tnt_raise(ClientError, ER_REPLICASET_UUID_IS_RO);
-		tt_uuid uu;
-		tuple_field_uuid_xc(new_tuple, BOX_CLUSTER_FIELD_UUID, &uu);
-		REPLICASET_UUID = uu;
-	} else if (strcmp(key, "version") == 0) {
-		if (new_tuple != NULL) {
-			uint32_t major, minor, patch;
-			if (tuple_field_u32(new_tuple, 1, &major) != 0 ||
-			    tuple_field_u32(new_tuple, 2, &minor) != 0)
-				tnt_raise(ClientError, ER_WRONG_DD_VERSION);
-			/* Version can be major.minor with no patch. */
-			if (tuple_field_u32(new_tuple, 3, &patch) != 0)
-				patch = 0;
-			dd_version_id = version_id(major, minor, patch);
-		} else {
-			assert(old_tuple != NULL);
-			/*
-			 * _schema:delete({'version'}) for
-			 * example, for box.internal.bootstrap().
-			 */
-			dd_version_id = tarantool_version_id();
+	credentials *cr = effective_user();
+	/*
+	 * Access check to _schema is following.
+	 * If users have create or write privileges on universe or write on _schema,
+	 * they can't update max_id key.
+	 * Otherwise, simple write check is performed.
+	 */
+	uint32_t access = cr->universal_access;
+	struct space *schema_space = space_by_id(BOX_SCHEMA_ID);
+	access |= schema_space->access[cr->auth_token].effective;
+	if (strncmp(key, "max_id", 6) == 0) {
+		if (!(access & (PRIV_W | PRIV_C)))
+			goto error;
+	} else {
+		if (~access & PRIV_W)
+			goto error;
+		else if (strncmp(key, "cluster", 7) == 0) {
+			if (new_tuple == NULL)
+				tnt_raise(ClientError,
+					  ER_REPLICASET_UUID_IS_RO);
+			tt_uuid uu;
+			tuple_field_uuid_xc(new_tuple, BOX_CLUSTER_FIELD_UUID,
+					    &uu);
+			REPLICASET_UUID = uu;
+		} else if (strncmp(key, "version", 7) == 0) {
+			if (new_tuple != NULL) {
+				uint32_t major, minor, patch;
+				if (tuple_field_u32(new_tuple, 1, &major) !=
+				    0 ||
+				    tuple_field_u32(new_tuple, 2, &minor) != 0)
+					tnt_raise(ClientError,
+						  ER_WRONG_DD_VERSION);
+				/* Version can be major.minor with no patch. */
+				if (tuple_field_u32(new_tuple, 3, &patch) != 0)
+					patch = 0;
+				dd_version_id = version_id(major, minor, patch);
+			} else {
+				assert(old_tuple != NULL);
+				/*
+				 * _schema:delete({'version'}) for
+				 * example, for box.internal.bootstrap().
+				 */
+				dd_version_id = tarantool_version_id();
+			}
 		}
 	}
+	return;
+error:
+	struct user *user = user_find_xc(cr->uid);
+	tnt_raise(AccessDeniedError,
+		  priv_name(PRIV_W),
+		  schema_object_name(SC_SPACE),
+		  "_schema",
+		  user->def->name);
 }
 
 /**
@@ -2967,6 +3004,9 @@ on_replace_dd_sequence(struct trigger * /* trigger */, void *event)
 		new_def = sequence_def_new_from_tuple(new_tuple,
 						      ER_CREATE_SEQUENCE);
 		assert(sequence_by_id(new_def->id) == NULL);
+		/* When object is not created, we assume ADMIN owns it */
+		access_check_ddl(new_def->name, ADMIN, SC_SEQUENCE,
+				 PRIV_C, false);
 		sequence_cache_replace(new_def);
 		alter->new_def = new_def;
 	} else if (old_tuple != NULL && new_tuple == NULL) {	/* DELETE */

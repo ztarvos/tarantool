@@ -27,6 +27,7 @@ s:insert({2})
 --
 box.schema.user.grant('testus', 'read', 'space', 'admin_space')
 box.schema.user.grant('testus', 'read', 'space', 'admin_space')
+box.schema.user.grant('testus', 'read', 'universe')
 
 session.su('testus')
 s:select(1)
@@ -39,6 +40,7 @@ s:drop()
 session.su('admin')
 box.schema.user.revoke('testus', 'read', 'space', 'admin_space')
 box.schema.user.revoke('testus', 'read', 'space', 'admin_space')
+box.schema.user.revoke('testus', 'read', 'universe')
 
 session.su('testus')
 s:select(1)
@@ -52,6 +54,9 @@ session.su('testus')
 s:select(1)
 s:delete(1)
 s:insert({3})
+session.su('admin')
+box.schema.user.grant('testus', 'read', 'universe')
+session.su('testus')
 s:drop()
 session.su('admin')
 --
@@ -68,14 +73,12 @@ box.space._user:select(1)
 s:select(1)
 s:insert({4})
 s:delete({3})
+session.su('admin')
+box.schema.user.grant('guest', 'read', 'universe')
+session.su('guest')
 s:drop()
 gs = box.schema.space.create('guest_space')
---
--- FIXME: object create calls system space auto_increment, which requires
--- read and write privileges. Create privilege must solve this.
---
-box.schema.func.create('guest_func')
-session.su('admin', box.schema.user.grant, "guest", "read", "universe")
+
 box.schema.func.create('guest_func')
 session.su('admin')
 box.schema.user.revoke("guest", "read", "universe")
@@ -123,7 +126,7 @@ box.schema.func.create('uniuser_func')
 
 session.su('admin')
 box.schema.user.create('someuser')
-box.schema.user.grant('someuser', 'read, write, execute', 'universe')
+box.schema.user.grant('someuser', 'read', 'universe')
 session.su('someuser')
 --
 -- Check drop objects of another user
@@ -150,7 +153,15 @@ box.schema.user.grant('testuser', 'write', 'space', '_user')
 session.su('testuser')
 testuser_uid = session.uid()
 _ = box.space._user:delete(2)
+session.su('admin')
+box.schema.user.grant('testuser', 'drop', 'universe')
+session.su('testuser')
+_ = box.space._user:delete(2)
 box.space._user:select(1)
+uid = box.space._user:insert{maxuid+1, session.uid(), 'someone', 'user', EMPTY_MAP}[1]
+session.su('admin')
+box.schema.user.grant('testuser', 'create', 'universe')
+session.su('testuser')
 uid = box.space._user:insert{maxuid+1, session.uid(), 'someone', 'user', EMPTY_MAP}[1]
 _ = box.space._user:delete(uid)
 
@@ -158,6 +169,8 @@ session.su('admin')
 box.space._user:select(1)
 _ = box.space._user:delete(testuser_uid)
 box.schema.user.revoke('testuser', 'write', 'space', '_user')
+box.schema.user.revoke('testuser', 'drop', 'universe')
+box.schema.user.revoke('testuser', 'create', 'universe')
 --
 -- Check read grant on _user
 --
