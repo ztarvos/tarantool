@@ -65,6 +65,8 @@ struct gc_consumer {
 	 * WAL files, or both - SNAP and WAL.
 	 */
 	enum gc_consumer_type type;
+	/** Replica associated with consumer (if any). */
+	struct replica *replica;
 };
 
 typedef rb_tree(struct gc_consumer) gc_tree_t;
@@ -131,10 +133,18 @@ gc_consumer_new(const char *name, int64_t signature,
 	return consumer;
 }
 
+void
+gc_consumer_set_replica(struct gc_consumer *gc, struct replica *replica)
+{
+	gc->replica = replica;
+}
+
 /** Free a consumer object. */
 static void
 gc_consumer_delete(struct gc_consumer *consumer)
 {
+	if (consumer->replica != NULL)
+		consumer->replica->gc = NULL;
 	free(consumer->name);
 	TRASH(consumer);
 	free(consumer);
@@ -248,6 +258,48 @@ void
 gc_set_checkpoint_count(int checkpoint_count)
 {
 	gc.checkpoint_count = checkpoint_count;
+}
+
+void
+gc_xdir_clean_notify()
+{
+	struct gc_consumer *leftmost =
+	    gc_tree_first(&gc.consumers);
+	/*
+	 * Exit if no consumers left or if this consumer is
+	 * not associated with replica (backup for example).
+	 */
+	if (leftmost == NULL || leftmost->replica == NULL)
+		return;
+	/*
+	 * We have to maintain @checkpoint_count oldest snapshots,
+	 * plus we can't remove snapshots that are still in use.
+	 * So if leftmost replica has signature greater or equel
+	 * then the oldest checkpoint that must be preserved,
+	 * nothing to do.
+	 */
+	struct checkpoint_iterator checkpoints;
+	checkpoint_iterator_init(&checkpoints);
+	assert(gc.checkpoint_count > 0);
+	const struct vclock *vclock;
+	for (int i = 0; i < gc.checkpoint_count; i++)
+		if((vclock = checkpoint_iterator_prev(&checkpoints)) == NULL)
+			return;
+	if (leftmost->signature >= vclock_sum(vclock))
+		return;
+	int64_t signature = leftmost->signature;
+	while (true) {
+		say_crit("remove replica with the oldest signature = %lld"
+		         " and uuid = %s", signature,
+			 tt_uuid_str(&leftmost->replica->uuid));
+		gc_consumer_unregister(leftmost);
+		leftmost = gc_tree_first(&gc.consumers);
+		if (leftmost == NULL || leftmost->replica == NULL ||
+		    leftmost->signature > signature) {
+			gc_run();
+			return;
+		}
+	}
 }
 
 struct gc_consumer *

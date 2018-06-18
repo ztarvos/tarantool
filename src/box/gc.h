@@ -35,6 +35,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "replication.h"
+
 #if defined(__cplusplus)
 extern "C" {
 #endif /* defined(__cplusplus) */
@@ -93,11 +95,26 @@ gc_consumer_register(const char *name, int64_t signature,
 		     enum gc_consumer_type type);
 
 /**
+ * Bind consumer with associated replica (if any).
+ */
+void
+gc_consumer_set_replica(struct gc_consumer *gc, struct replica *replica);
+
+/**
  * Unregister a consumer and invoke garbage collection
  * if needed.
  */
 void
 gc_consumer_unregister(struct gc_consumer *consumer);
+
+/**
+ * Delete consumer with the least recent vclock and start
+ * garbage collection. If nothing to delete find next
+ * consumer etc. Originally created for cases with running
+ * out of disk space because of disconnected replica.
+ */
+void
+gc_xdir_clean_notify();
 
 /**
  * Advance the vclock signature tracked by a consumer and

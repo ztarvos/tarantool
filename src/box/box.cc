@@ -1436,6 +1436,7 @@ box_process_join(struct ev_io *io, struct xrow_header *header)
 	replica = replica_by_uuid(&instance_uuid);
 	assert(replica != NULL);
 	replica->gc = gc;
+	gc_consumer_set_replica(gc, replica);
 	gc_guard.is_active = false;
 
 	/* Remember master's vclock after the last request */

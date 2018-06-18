@@ -29,6 +29,7 @@
  * SUCH DAMAGE.
  */
 #include "fio.h"
+#include "errinj.h"
 
 #include <sys/types.h>
 
@@ -141,6 +142,12 @@ fio_writev(int fd, struct iovec *iov, int iovcnt)
 	ssize_t nwr;
 restart:
 	nwr = writev(fd, iov, iovcnt);
+	/* Simulate running out of disk space to force the gc to clean logs. */
+	struct errinj *inj = errinj(ERRINJ_NO_DISK_SPACE, ERRINJ_BOOL);
+	if (inj != NULL && inj->bparam) {
+		errno = ENOSPC;
+		nwr = -1;
+	}
 	if (nwr < 0) {
 		if (errno == EINTR) {
 			errno = 0;

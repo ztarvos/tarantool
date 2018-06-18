@@ -581,6 +581,7 @@ relay_subscribe(struct replica *replica, int fd, uint64_t sync,
 			vclock_sum(replica_clock), GC_CONSUMER_WAL);
 		if (replica->gc == NULL)
 			diag_raise();
+		gc_consumer_set_replica(replica->gc, replica);
 	}
 
 	relay_start(relay, fd, sync, relay_send_row);
