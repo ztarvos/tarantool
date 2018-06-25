@@ -61,10 +61,10 @@ const unsigned char iproto_key_type[IPROTO_KEY_MAX] =
 		/* 0x13 */	MP_UINT, /* IPROTO_OFFSET */
 		/* 0x14 */	MP_UINT, /* IPROTO_ITERATOR */
 		/* 0x15 */	MP_UINT, /* IPROTO_INDEX_BASE */
+		/* 0x16 */	MP_UINT, /* IPROTO_FLAGS */
 	/* }}} */
 
 	/* {{{ unused */
-		/* 0x16 */	MP_UINT,
 		/* 0x17 */	MP_UINT,
 		/* 0x18 */	MP_UINT,
 		/* 0x19 */	MP_UINT,
@@ -148,7 +148,7 @@ const char *iproto_key_strs[IPROTO_KEY_MAX] = {
 	"offset",           /* 0x13 */
 	"iterator",         /* 0x14 */
 	"index base",       /* 0x15 */
-	NULL,               /* 0x16 */
+	"flags",            /* 0x16 */
 	NULL,               /* 0x17 */
 	NULL,               /* 0x18 */
 	NULL,               /* 0x19 */

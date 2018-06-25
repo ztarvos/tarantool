@@ -129,6 +129,8 @@ struct request {
 	const char *ops_end;
 	/** Base field offset for UPDATE/UPSERT, e.g. 0 for C and 1 for Lua. */
 	int index_base;
+	/** Engine-specific statement flags. */
+	uint32_t flags;
 };
 
 /**

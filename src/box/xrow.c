@@ -514,6 +514,9 @@ error:
 		case IPROTO_INDEX_BASE:
 			request->index_base = mp_decode_uint(&value);
 			break;
+		case IPROTO_FLAGS:
+			request->flags = mp_decode_uint(&value);
+			break;
 		case IPROTO_LIMIT:
 			request->limit = mp_decode_uint(&value);
 			break;
@@ -606,6 +609,11 @@ xrow_encode_dml(const struct request *request, struct iovec *iov)
 	if (request->index_base) { /* UPDATE/UPSERT */
 		pos = mp_encode_uint(pos, IPROTO_INDEX_BASE);
 		pos = mp_encode_uint(pos, request->index_base);
+		map_size++;
+	}
+	if (request->flags) {
+		pos = mp_encode_uint(pos, IPROTO_FLAGS);
+		pos = mp_encode_uint(pos, request->flags);
 		map_size++;
 	}
 	if (request->key) {

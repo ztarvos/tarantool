@@ -66,6 +66,7 @@ enum iproto_key {
 	IPROTO_OFFSET = 0x13,
 	IPROTO_ITERATOR = 0x14,
 	IPROTO_INDEX_BASE = 0x15,
+	IPROTO_FLAGS = 0x16,
 	/* Leave a gap between integer values and other keys */
 	IPROTO_KEY = 0x20,
 	IPROTO_TUPLE = 0x21,
@@ -96,7 +97,7 @@ enum iproto_ballot_key {
 			  bit(LSN) | bit(SCHEMA_VERSION))
 #define IPROTO_DML_BODY_BMAP (bit(SPACE_ID) | bit(INDEX_ID) | bit(LIMIT) |\
 			      bit(OFFSET) | bit(ITERATOR) | bit(INDEX_BASE) |\
-			      bit(KEY) | bit(TUPLE) | bit(OPS))
+			      bit(KEY) | bit(TUPLE) | bit(OPS) | bit(FLAGS))
 
 static inline bool
 xrow_header_has_key(const char *pos, const char *end)

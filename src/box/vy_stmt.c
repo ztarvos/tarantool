@@ -112,6 +112,7 @@ vy_stmt_alloc(struct tuple_format *format, uint32_t bsize)
 	tuple->data_offset = sizeof(struct vy_stmt) + meta_size;;
 	vy_stmt_set_lsn(tuple, 0);
 	vy_stmt_set_type(tuple, 0);
+	vy_stmt_set_flags(tuple, 0);
 	return tuple;
 }
 
@@ -498,6 +499,7 @@ vy_stmt_encode_primary(const struct tuple *value,
 	struct request request;
 	memset(&request, 0, sizeof(request));
 	request.type = type;
+	request.flags = vy_stmt_flags(value);
 	request.space_id = space_id;
 	uint32_t size;
 	const char *extracted = NULL;
@@ -544,6 +546,7 @@ vy_stmt_encode_secondary(const struct tuple *value,
 	struct request request;
 	memset(&request, 0, sizeof(request));
 	request.type = type;
+	request.flags = vy_stmt_flags(value);
 	uint32_t size;
 	const char *extracted = tuple_extract_key(value, cmp_def, &size);
 	if (extracted == NULL)
@@ -614,6 +617,7 @@ vy_stmt_decode(struct xrow_header *xrow, const struct key_def *key_def,
 		return NULL; /* OOM */
 
 	vy_stmt_set_lsn(stmt, xrow->lsn);
+	vy_stmt_set_flags(stmt, request.flags);
 	return stmt;
 }
 
