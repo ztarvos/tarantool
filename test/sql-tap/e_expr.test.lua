@@ -1,6 +1,6 @@
 #!/usr/bin/env tarantool
 test = require("sqltester")
-test:plan(12431)
+test:plan(10665)
 
 --!./tcltestrunner.lua
 -- 2010 July 16
@@ -77,8 +77,10 @@ local operations = {
     {"<>", "ne1"},
     {"!=", "ne2"},
     {"IS", "is"},
-    {"LIKE", "like"},
-    {"GLOB", "glob"},
+-- NOTE: This test needs refactoring after deletion of GLOB &
+--	 type restrictions for LIKE. (See #3572)
+--    {"LIKE", "like"},
+--    {"GLOB", "glob"},
     {"AND", "and"},
     {"OR", "or"},
     {"MATCH", "match"},
@@ -96,7 +98,12 @@ operations = {
     {"+", "-"},
     {"<<", ">>", "&", "|"},
     {"<", "<=", ">", ">="},
-    {"=", "==", "!=", "<>", "LIKE", "GLOB"}, --"MATCH", "REGEXP"},
+-- NOTE: This test needs refactoring after deletion of GLOB &
+--	 type restrictions for LIKE. (See #3572)
+-- Another NOTE: MATCH & REGEXP aren't supported in Tarantool &
+-- 		 are waiting for their hour, don't confuse them
+--		 being commented with ticket above.
+    {"=", "==", "!=", "<>"}, --"LIKE", "GLOB"}, --"MATCH", "REGEXP"},
     {"AND"},
     {"OR"},
 }
@@ -475,6 +482,7 @@ for _, op in ipairs(oplist) do
         end
     end
 end
+
 ---------------------------------------------------------------------------
 -- Test the IS and IS NOT operators.
 --
