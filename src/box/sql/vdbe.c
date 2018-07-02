@@ -1045,12 +1045,12 @@ case OP_Integer: {         /* out2 */
 	break;
 }
 
-/* Opcode: Bool P1 P2 * * *
- * Synopsis: r[P2]=P1
+/* Opcode: Bool * P2 * P4 *
+ * Synopsis: r[P2]=P4
  *
- * The boolean value P1 is written into register P2.
+ * The boolean value P4 is written into register P2.
  */
-case OP_Bool: {         /* out2 */
+case OP_Bool: {
 	pOut = out2Prerelease(p, pOp);
 	assert(pOp->p4type == P4_BOOL);
 	pOut->flags = MEM_Bool;
