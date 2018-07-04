@@ -37,28 +37,6 @@
 #include "sqliteInt.h"
 
 /*
- * If we compile with the SQLITE_TEST macro set, then the following block
- * of code will give us the ability to simulate a disk I/O error.  This
- * is used for testing the I/O recovery logic.
- */
-#if defined(SQLITE_TEST)
-int sqlite3_io_error_hit = 0;	/* Total number of I/O Errors */
-int sqlite3_io_error_hardhit = 0;	/* Number of non-benign errors */
-int sqlite3_io_error_pending = 0;	/* Count down to first I/O error */
-int sqlite3_io_error_persist = 0;	/* True if I/O errors persist */
-int sqlite3_io_error_benign = 0;	/* True if errors are benign */
-int sqlite3_diskfull_pending = 0;
-int sqlite3_diskfull = 0;
-#endif				/* defined(SQLITE_TEST) */
-
-/*
- * When testing, also keep a count of the number of open files.
- */
-#if defined(SQLITE_TEST)
-int sqlite3_open_file_count = 0;
-#endif				/* defined(SQLITE_TEST) */
-
-/*
  * The default SQLite sqlite3_vfs implementations do not allocate
  * memory (actually, os_unix.c allocates a small amount of memory
  * from within OsOpen()), but some third-party implementations may.
@@ -74,9 +52,8 @@ int sqlite3_open_file_count = 0;
  *
  */
 #if defined(SQLITE_TEST)
-int sqlite3_memdebug_vfs_oom_test = 1;
 #define DO_OS_MALLOC_TEST(x)                                       \
-  if (sqlite3_memdebug_vfs_oom_test && !x) { \
+  if (!x) { \
     void *pTstAlloc = sqlite3Malloc(10);                             \
     if (!pTstAlloc) return SQLITE_IOERR_NOMEM_BKPT;                  \
     sqlite3_free(pTstAlloc);                                         \

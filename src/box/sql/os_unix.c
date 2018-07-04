@@ -30,14 +30,6 @@
  */
 
 #include "sqliteInt.h"
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <time.h>
-#include <sys/time.h>
-#include <errno.h>
-#include <sys/mman.h>
 
 
 /*
@@ -48,18 +40,10 @@
 #endif
 
 /*
- * Default permissions when creating auto proxy dir
- */
-#ifndef SQLITE_DEFAULT_PROXYDIR_PERMISSIONS
-#define SQLITE_DEFAULT_PROXYDIR_PERMISSIONS 0755
-#endif
-
-/*
  * Maximum supported path-length.
  */
 #define MAX_PATHNAME 512
 
-typedef struct unixShmNode unixShmNode;	/* Shared memory instance */
 typedef struct unixInodeInfo unixInodeInfo;	/* An i-node */
 typedef struct UnixUnusedFd UnixUnusedFd;	/* An unused file descriptor */
 
@@ -81,7 +65,6 @@ struct UnixUnusedFd {
  */
 typedef struct unixFile unixFile;
 struct unixFile {
-	sqlite3_io_methods const *pMethod;	/* Always the first entry */
 	sqlite3_vfs *pVfs;	/* The VFS that created this unixFile */
 	unixInodeInfo *pInode;	/* Info about locks on this inode */
 	int h;			/* The file descriptor */
@@ -113,11 +96,6 @@ static pid_t randomnessPid = 0;
 #define UNIXFILE_DELETE      0x20	/* Delete on close */
 #define UNIXFILE_URI         0x40	/* Filename might have query parameters */
 #define UNIXFILE_NOLOCK      0x80	/* Do no file locking */
-
-/*
- * Include code that is common to all os_*.c files
- */
-#include "os_common.h"
 
 /*
  * Define various macros that are missing from some systems.
@@ -322,7 +300,6 @@ struct unixInodeInfo {
 	unsigned char eFileLock;	/* One of SHARED_LOCK, RESERVED_LOCK etc. */
 	unsigned char bProcessLock;	/* An exclusive process lock is held */
 	int nRef;		/* Number of pointers to this structure */
-	unixShmNode *pShmNode;	/* Shared memory associated with this inode */
 	int nLock;		/* Number of outstanding file locks */
 	UnixUnusedFd *pUnused;	/* Unused file descriptors to close */
 	unixInodeInfo *pNext;	/* List of all unixInodeInfo objects */
@@ -431,7 +408,6 @@ releaseInodeInfo(unixFile * pFile)
 	if (ALWAYS(pInode)) {
 		pInode->nRef--;
 		if (pInode->nRef == 0) {
-			assert(pInode->pShmNode == 0);
 			closePendingFds(pFile);
 			if (pInode->pPrev) {
 				assert(pInode->pPrev->pNext == pInode);
@@ -768,7 +744,6 @@ closeUnixFile(sqlite3_file * id)
 		robust_close(pFile, pFile->h, __LINE__);
 		pFile->h = -1;
 	}
-	OpenCounter(-1);
 	sqlite3_free(pFile->pUnused);
 	memset(pFile, 0, sizeof(unixFile));
 	return SQLITE_OK;
@@ -852,7 +827,6 @@ seekAndRead(unixFile * id, sqlite3_int64 offset, void *pBuf, int cnt)
 	assert(id->h > 2);
 	do {
 		newOffset = lseek(id->h, offset, SEEK_SET);
-		SimulateIOError(newOffset = -1);
 		if (newOffset < 0) {
 			storeLastErrno((unixFile *) id, errno);
 			return -1;
@@ -949,7 +923,6 @@ seekAndWriteFd(int fd,		/* File descriptor to write to */
 	nBuf &= 0x1ffff;
 	do {
 		i64 iSeek = lseek(fd, iOff, SEEK_SET);
-		SimulateIOError(iSeek = -1);
 		if (iSeek < 0) {
 			rc = -1;
 			break;
@@ -993,8 +966,6 @@ unixWrite(sqlite3_file * id, const void *pBuf, int amt, sqlite3_int64 offset)
 		offset += wrote;
 		pBuf = &((char *)pBuf)[wrote];
 	}
-	SimulateIOError((wrote = (-1), amt = 1));
-	SimulateDiskfullError((wrote = 0, amt = 1));
 
 	if (amt > wrote) {
 		if (wrote < 0 && pFile->lastErrno != ENOSPC) {
@@ -1007,61 +978,6 @@ unixWrite(sqlite3_file * id, const void *pBuf, int amt, sqlite3_int64 offset)
 	}
 
 	return SQLITE_OK;
-}
-
-#ifdef SQLITE_TEST
-/*
- * Count the number of fullsyncs and normal syncs.  This is used to test
- * that syncs and fullsyncs are occurring at the right times.
- */
-int sqlite3_sync_count = 0;
-int sqlite3_fullsync_count = 0;
-#endif
-
-
-/*
- * The fsync() system call does not work as advertised on many
- * unix systems.  The following procedure is an attempt to make
- * it work better.
- *
- * The SQLITE_NO_SYNC macro disables all fsync()s.  This is useful
- * for testing when we want to run through the test suite quickly.
- * You are strongly advised *not* to deploy with SQLITE_NO_SYNC
- * enabled, however, since with SQLITE_NO_SYNC enabled, an OS crash
- * or power failure will likely corrupt the database file.
- *
- * SQLite sets the dataOnly flag if the size of the file is unchanged.
- * The idea behind dataOnly is that it should only write the file content
- * to disk, not the inode.  We only set dataOnly if the file size is
- * unchanged since the file size is part of the inode.  However,
- * Ted Ts'o tells us that fdatasync() will also write the inode if the
- * file size has changed.  The only real difference between fdatasync()
- * and fsync(), Ted tells us, is that fdatasync() will not flush the
- * inode if the mtime or owner or other inode attributes have changed.
- * We only care about the file size, not the other file attributes, so
- * as far as SQLite is concerned, an fdatasync() is always adequate.
- * So, we always use fdatasync() if it is available, regardless of
- * the value of the dataOnly flag.
- */
-static int
-full_fsync(int fd, int fullSync, int dataOnly)
-{
-	UNUSED_PARAMETER(fd);
-	UNUSED_PARAMETER(fullSync);
-	UNUSED_PARAMETER(dataOnly);
-
-	/* Record the number of times that we do a normal fsync() and
-	 * FULLSYNC.  This is used during testing to verify that this procedure
-	 * gets called with the correct arguments.
-	 */
-#ifdef SQLITE_TEST
-	if (fullSync)
-		sqlite3_fullsync_count++;
-	sqlite3_sync_count++;
-#endif
-
-	struct stat buf;
-	return fstat(fd, &buf);
 }
 
 /*
@@ -1190,9 +1106,7 @@ unixFileControl(sqlite3_file * id, int op, void *pArg)
 		}
 	case SQLITE_FCNTL_SIZE_HINT:{
 			int rc;
-			SimulateIOErrorBenign(1);
 			rc = fcntlSizeHint(pFile, *(i64 *) pArg);
-			SimulateIOErrorBenign(0);
 			return rc;
 		}
 	case SQLITE_FCNTL_VFSNAME:{
@@ -1604,8 +1518,6 @@ fillInUnixFile(sqlite3_vfs * pVfs,	/* Pointer to vfs object */
 		if (h >= 0)
 			robust_close(pNew, h, __LINE__);
 	} else {
-		pNew->pMethod = pLockingStyle;
-		OpenCounter(+1);
 		verifyDbFile(pNew);
 	}
 	return rc;
@@ -1661,7 +1573,6 @@ unixGetTempname(int nBuf, char *zBuf)
 	 * function failing.
 	 */
 	zBuf[0] = 0;
-	SimulateIOError(return SQLITE_IOERR);
 
 	zDir = unixTempFileDir();
 	if (zDir == 0)
@@ -2013,7 +1924,6 @@ unixDelete(sqlite3_vfs * NotUsed,	/* VFS containing this as the xDelete method *
 {
 	int rc = SQLITE_OK;
 	UNUSED_PARAMETER(NotUsed);
-	SimulateIOError(return SQLITE_IOERR_DELETE);
 	if (unlink(zPath) == (-1)) {
 		if (errno == ENOENT) {
 			rc = SQLITE_IOERR_DELETE_NOENT;
@@ -2027,7 +1937,8 @@ unixDelete(sqlite3_vfs * NotUsed,	/* VFS containing this as the xDelete method *
 		int fd;
 		rc = openDirectory(zPath, &fd);
 		if (rc == SQLITE_OK) {
-			if (full_fsync(fd, 0, 0)) {
+			struct stat buf;
+			if (fstat(fd, &buf)) {
 				rc = unixLogError(SQLITE_IOERR_DIR_FSYNC,
 						  "fsync", zPath);
 			}
