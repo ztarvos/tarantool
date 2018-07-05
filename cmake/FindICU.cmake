@@ -21,6 +21,10 @@ find_path(ICU_INCLUDE_DIR
     HINTS ${ICU_FIND_PATH_HINTS}
     ${ICU_FIND_OPTS}
 )
+if (CMAKE_STATICBUILD)
+    set(TMP ${CMAKE_FIND_LIBRARY_SUFFIXES})
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+endif()
 find_library(ICU_LIBRARY_I18N NAMES icui18n
     HINTS ${ICU_FIND_LIBRARY_HINTS}
     ${ICU_FIND_OPTS}
@@ -29,6 +33,14 @@ find_library(ICU_LIBRARY_UC NAMES icuuc
     HINTS ${ICU_FIND_LIBRARY_HINTS}
     ${ICU_FIND_OPTS}
 )
+if (CMAKE_STATICBUILD)
+    find_library(ICU_LIBRARY_DATA NAMES icudata
+        HINTS ${ICU_FIND_LIBRARY_HINTS}
+        ${ICU_FIND_OPTS}
+    )
+    set(ICU_LIBRARY_UC ${ICU_LIBRARY_DATA} ${ICU_LIBRARY_UC})
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ${TMP})
+endif()
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(ICU

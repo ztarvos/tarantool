@@ -80,6 +80,20 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
                             "Work isn't guarenteed using system readline")
         endif()
 
+        # Detecting LibCurses
+        execute_process(COMMAND ${HOMEBREW_EXECUTABLE} --prefix ncurses
+                        OUTPUT_VARIABLE HOMEBREW_CURSES
+                        OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(DEFINED HOMEBREW_CURSES)
+            if (NOT DEFINED CURSES_ROOT)
+                message(STATUS "Setting readline root to ${HOMEBREW_CURSES}")
+                set(CURSES_ROOT "${HOMEBREW_CURSES}")
+            endif()
+        elseif(NOT DEFINED ${CURSES_ROOT})
+            message(WARNING "Homebrew's curses isn't installed. "
+                            "Work isn't guarenteed using system curses")
+        endif()
+
         # Detecting OpenSSL
         execute_process(COMMAND ${HOMEBREW_EXECUTABLE} --prefix openssl
                         OUTPUT_VARIABLE HOMEBREW_OPENSSL
