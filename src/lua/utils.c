@@ -215,6 +215,50 @@ static struct {
 };
 
 /**
+ * Configure one field in @a cfg. Add one lua table to the top of
+ * lua stack.
+ * @param L lua stack
+ * @param i index of option in OPTIONS[]
+ * @param cfg serializer to inherit configuration
+ * @return ponter to the value of option, NULL if option is not
+ * in the table
+ */
+static int *
+parse_option(struct lua_State *L, int i, struct luaL_serializer *cfg) {
+	lua_getfield(L, 2, OPTIONS[i].name);
+	if (lua_isnil(L, -1)) {
+		lua_pop(L, 1); /* key hasn't changed */
+		return NULL;
+	}
+	/*
+	 * Update struct luaL_serializer using pointer to a
+	 * configuration value (all values must be `int` for that).
+	 */
+	int *pval = (int *) ((char *) cfg + OPTIONS[i].offset);
+	/* Update struct luaL_serializer structure */
+	switch (OPTIONS[i].type) {
+	case LUA_TBOOLEAN:
+		*pval = lua_toboolean(L, -1);
+		break;
+	case LUA_TNUMBER:
+		*pval = lua_tointeger(L, -1);
+		break;
+	default:
+		unreachable();
+	}
+	return pval;
+}
+
+void
+parse_options(struct lua_State *L, struct luaL_serializer *cfg) {
+	for (int i = 0; OPTIONS[i].name != NULL; i++) {
+		if (parse_option(L, i, cfg) != NULL)
+			lua_pop(L, 1);
+	}
+	lua_pop(L, 1);
+}
+
+/**
  * @brief serializer.cfg{} Lua binding for serializers.
  * serializer.cfg is a table that contains current configuration values from
  * luaL_serializer structure. serializer.cfg has overriden __call() method
@@ -225,38 +269,29 @@ static struct {
  * @return 0
  */
 static int
-luaL_serializer_cfg(lua_State *L)
+luaL_serializer_cfg(struct lua_State *L)
 {
 	luaL_checktype(L, 1, LUA_TTABLE); /* serializer */
 	luaL_checktype(L, 2, LUA_TTABLE); /* serializer.cfg */
 	struct luaL_serializer *cfg = luaL_checkserializer(L);
 	/* Iterate over all available options and checks keys in passed table */
 	for (int i = 0; OPTIONS[i].name != NULL; i++) {
-		lua_getfield(L, 2, OPTIONS[i].name);
-		if (lua_isnil(L, -1)) {
-			lua_pop(L, 1); /* key hasn't changed */
-			continue;
-		}
-		/*
-		 * Update struct luaL_serializer using pointer to a
-		 * configuration value (all values must be `int` for that).
-		 */
-		int *pval = (int *) ((char *) cfg + OPTIONS[i].offset);
+		int *pval = parse_option(L, i, cfg);
 		/* Update struct luaL_serializer structure */
-		switch (OPTIONS[i].type) {
-		case LUA_TBOOLEAN:
-			*pval = lua_toboolean(L, -1);
-			lua_pushboolean(L, *pval);
-			break;
-		case LUA_TNUMBER:
-			*pval = lua_tointeger(L, -1);
-			lua_pushinteger(L, *pval);
-			break;
-		default:
-			unreachable();
+		if (pval != NULL) {
+			switch (OPTIONS[i].type) {
+			case LUA_TBOOLEAN:
+				lua_pushboolean(L, *pval);
+				break;
+			case LUA_TNUMBER:
+				lua_pushinteger(L, *pval);
+				break;
+			default:
+				unreachable();
+			}
+			/* Save normalized value to serializer.cfg table */
+			lua_setfield(L, 1, OPTIONS[i].name);
 		}
-		/* Save normalized value to serializer.cfg table */
-		lua_setfield(L, 1, OPTIONS[i].name);
 	}
 	return 0;
 }

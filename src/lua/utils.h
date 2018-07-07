@@ -240,6 +240,16 @@ luaL_checkserializer(struct lua_State *L) {
 		luaL_checkudata(L, lua_upvalueindex(1), LUAL_SERIALIZER);
 }
 
+/**
+ * Parse configuration table into @a cfg. Remove the lua table
+ * from the top of lua stack.
+ * parse_options.
+ * @param L lua stack
+ * @param cfg serializer to inherit configuration
+ */
+void
+parse_options(struct lua_State *l, struct luaL_serializer *cfg);
+
 /** A single value on the Lua stack. */
 struct luaL_field {
 	union {
