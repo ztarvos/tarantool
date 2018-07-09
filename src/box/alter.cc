@@ -2917,6 +2917,13 @@ on_replace_dd_cluster(struct trigger *trigger, void *event)
 	txn_on_commit(txn, on_commit);
 }
 
+static void
+on_replace_dd_promotion(struct trigger *trigger, void *event)
+{
+	(void) trigger;
+	(void) event;
+}
+
 /* }}} cluster configuration */
 
 /* {{{ sequence */
@@ -3220,6 +3227,10 @@ struct trigger alter_space_on_replace_space = {
 
 struct trigger alter_space_on_replace_index = {
 	RLIST_LINK_INITIALIZER, on_replace_dd_index, NULL, NULL
+};
+
+struct trigger alter_space_on_replace_promotion = {
+	RLIST_LINK_INITIALIZER, on_replace_dd_promotion, NULL, NULL
 };
 
 struct trigger on_replace_truncate = {
