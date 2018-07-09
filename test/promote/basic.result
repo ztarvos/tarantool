@@ -1,0 +1,391 @@
+test_run = require('test_run').new()
+---
+...
+test_run:create_cluster(CLUSTER, 'promote')
+---
+...
+test_run:wait_fullmesh(CLUSTER)
+---
+...
+--
+-- Check the promote actually allows to switch the master.
+--
+_ = test_run:switch('box1')
+---
+...
+-- Box1 is a master.
+box.cfg.read_only
+---
+- false
+...
+_ = test_run:switch('box2')
+---
+...
+-- Box2 is a slave.
+box.cfg.read_only
+---
+- true
+...
+-- And can not do DDL/DML.
+box.schema.create_space('test') -- Fail.
+---
+- error: Can't modify data because this instance is in read-only mode.
+...
+box.ctl.promote()
+---
+- true
+...
+promote_info()
+---
+- quorum: 4
+  timeout: 3153600000
+  initiator_uuid: box2
+  old_master_uuid: box1
+  role: initiator
+  round_id: 1
+  comment: the new master is promoted
+  phase: success
+  round_uuid: round_1
+...
+-- Now the slave has become a master.
+box.cfg.read_only
+---
+- false
+...
+-- And can do DDL/DML.
+s = box.schema.create_space('test')
+---
+...
+s:drop()
+---
+...
+_ = test_run:switch('box1')
+---
+...
+-- In turn, the old master is a slave now.
+box.cfg.read_only
+---
+- true
+...
+promote_info()
+---
+- quorum: 4
+  timeout: 3153600000
+  initiator_uuid: box2
+  old_master_uuid: box1
+  role: old master
+  round_id: 1
+  comment: the old master is demoted completely
+  phase: success
+  round_uuid: round_1
+...
+-- For him any DDL/DML is forbidden.
+box.schema.create_space('test2')
+---
+- error: Can't modify data because this instance is in read-only mode.
+...
+-- Check watcher state.
+_ = test_run:switch('box3')
+---
+...
+promote_info()
+---
+- quorum: 4
+  timeout: 3153600000
+  initiator_uuid: box2
+  old_master_uuid: box1
+  role: watcher
+  round_id: 1
+  comment: the watcher has voted and left the round
+  phase: success
+  round_uuid: round_1
+...
+--
+-- Check promotion history.
+--
+_ = test_run:switch('box2')
+---
+...
+promotion_history()
+---
+- - {'step': 1, 'value': {'timeout': 3153600000, 'quorum': 4}, 'id': 1, 'type': 'begin',
+    'source_uuid': 'box2', 'round_uuid': 'round_1'}
+  - {'step': 2, 'value': {'is_master': true}, 'id': 1, 'type': 'status', 'source_uuid': 'box1',
+    'round_uuid': 'round_1'}
+  - {'step': 2, 'value': {'is_master': false}, 'id': 1, 'type': 'status', 'source_uuid': 'box3',
+    'round_uuid': 'round_1'}
+  - {'step': 2, 'value': {'is_master': false}, 'id': 1, 'type': 'status', 'source_uuid': 'box4',
+    'round_uuid': 'round_1'}
+  - {'step': 3, 'id': 1, 'type': 'sync', 'source_uuid': 'box1', 'round_uuid': 'round_1'}
+  - {'step': 4, 'id': 1, 'type': 'success', 'source_uuid': 'box2', 'round_uuid': 'round_1'}
+  - {'step': 4, 'id': 1, 'type': 'success', 'source_uuid': 'box3', 'round_uuid': 'round_1'}
+  - {'step': 4, 'id': 1, 'type': 'success', 'source_uuid': 'box4', 'round_uuid': 'round_1'}
+  - {'step': 5, 'id': 1, 'type': 'success', 'source_uuid': 'box1', 'round_uuid': 'round_1'}
+...
+--
+-- Clear the basic successfull test and try different errors.
+--
+box.ctl.promote_reset()
+---
+...
+promotion_history()
+---
+- []
+...
+prom = box.space._promotion
+---
+...
+-- Invalid UUIDs.
+prom:insert{1, 'invalid', 1, box.info.uuid, 1, 't'}
+---
+- error: 'Wrong record in _promotion (field 1): invalid UUID'
+...
+prom:insert{1, box.info.uuid, 1, 'invalid', 1, 't'}
+---
+- error: 'Wrong record in _promotion (field 3): invalid UUID'
+...
+-- Invalid ts.
+prom:insert{1, box.info.uuid, 1, box.info.uuid, -1, 't'}
+---
+- error: 'Wrong record in _promotion (field 5): wrong ts'
+...
+-- Invalid type.
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'invalid'}
+---
+- error: 'Wrong record in _promotion (field 6): wrong type'
+...
+-- Invalid type-specific options.
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'begin', {quorum = 1}}
+---
+- error: 'Wrong record in _promotion (field 7): expected 2 keys but got 1'
+...
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'begin', {quorum = 'invalid', timeout = 1}}
+---
+- error: 'Wrong record in _promotion (field 7): ''quorum'' must be unsigned'
+...
+map = setmetatable({}, {__serialize = 'map'})
+---
+...
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'status', map}
+---
+- error: 'Wrong record in _promotion (field 7): expected 1 keys but got 0'
+...
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'status', {is_master = 'invalid'}}
+---
+- error: 'Wrong record in _promotion (field 7): ''is_master'' must be boolean'
+...
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'error', map}
+---
+- error: 'Wrong record in _promotion (field 7): expected 2 keys but got 0'
+...
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'error', {code = 'code', message = 'msg'}}
+---
+- error: 'Wrong record in _promotion (field 7): ''code'' must be unsigned'
+...
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'sync', map}
+---
+- error: 'Wrong record in _promotion (field 7): ''sync'' has to have value nil'
+...
+prom:insert{1, box.info.uuid, 1, box.info.uuid, 1, 'success', map}
+---
+- error: 'Wrong record in _promotion (field 7): ''success'' has to have value nil'
+...
+--
+-- Test simple invalid scenarios.
+--
+-- Already master.
+box.ctl.promote()
+---
+- null
+- 'Error during promotion with round UUID ''non-initialized'': the initiator is already
+  master'
+...
+_ = test_run:switch('box1')
+---
+...
+-- Small quorum.
+box.ctl.promote({quorum = 2})
+---
+- null
+- 'Error during promotion with round UUID ''non-initialized'': too small quorum, expected
+  > 2, but got 2'
+...
+-- Two masters.
+box.cfg{read_only = false}
+---
+...
+_ = test_run:switch('box3')
+---
+...
+promote_check_error()
+---
+- null
+- 'Error during promotion with round UUID ''round_2'': two masters exist: ''box1''
+  and ''box2'''
+...
+promotion_history_find_masters(promotion_history())
+---
+- - {'step': 2, 'value': {'is_master': true}, 'id': 2, 'type': 'status', 'source_uuid': 'box1',
+    'round_uuid': 'round_2'}
+  - {'step': 2, 'value': {'is_master': true}, 'id': 2, 'type': 'status', 'source_uuid': 'box2',
+    'round_uuid': 'round_2'}
+...
+-- 3 - errors from the initiator and from the old masters.
+_ = promotion_history_wait_errors(3)
+---
+...
+box.cfg.read_only
+---
+- true
+...
+_ = test_run:switch('box1')
+---
+...
+box.cfg.read_only
+---
+- false
+...
+_ = test_run:switch('box2')
+---
+...
+box.cfg.read_only
+---
+- false
+...
+_ = test_run:switch('box4')
+---
+...
+box.cfg.read_only
+---
+- true
+...
+-- Box.cfg.read_only became immutable when promote had been
+-- called.
+box.cfg{read_only = false}
+---
+- error: 'Incorrect value for option ''read_only'': can not change the option when
+    box.ctl.promote() was used'
+...
+--
+-- Test recovery after failed promotion.
+--
+_ = test_run:cmd('restart server box2')
+---
+...
+_ = test_run:cmd('restart server box3')
+---
+...
+_ = test_run:switch('box2')
+---
+...
+info = promote_info()
+---
+...
+info.old_master_uuid == 'box1' or info.old_master_uuid == 'box2'
+---
+- true
+...
+info.old_master_uuid = nil
+---
+...
+info
+---
+- quorum: 4
+  timeout: 3153600000
+  initiator_uuid: box3
+  role: old master
+  round_id: 3
+  comment: 'the old master is back in read-write mode due to the error: Error during
+    promotion with round UUID ''round_2'': two masters exist: ''box1'' and ''box2'''
+  phase: error
+  round_uuid: round_3
+...
+_ = test_run:switch('box3')
+---
+...
+info = promote_info()
+---
+...
+info.old_master_uuid == 'box1' or info.old_master_uuid == 'box2'
+---
+- true
+...
+info.old_master_uuid = nil
+---
+...
+info
+---
+- quorum: 4
+  timeout: 3153600000
+  initiator_uuid: box3
+  role: initiator
+  round_id: 3
+  comment: 'the round failed due to the error: Error during promotion with round UUID
+    ''round_2'': two masters exist: ''box1'' and ''box2'''
+  phase: error
+  round_uuid: round_3
+...
+--
+-- Test timeout.
+--
+_ = test_run:switch('box1')
+---
+...
+box.ctl.promote_reset()
+---
+...
+box.cfg{read_only = true}
+---
+...
+-- Now box2 is a single master.
+_ = test_run:switch('box3')
+---
+...
+promote_info()
+---
+- []
+...
+promote_check_error({timeout = 0.00001})
+---
+- null
+- Timeout exceeded
+...
+promote_info()
+---
+- phase: error
+  initiator_uuid: box3
+  quorum: 4
+  role: initiator
+  round_id: 5
+  comment: 'the round failed due to the error: Timeout exceeded'
+  timeout: 1e-05
+  round_uuid: round_5
+...
+_ = promotion_history_wait_errors(4)
+---
+...
+promotion_history()
+---
+- - {'step': 1, 'value': {'timeout': 1e-05, 'quorum': 4}, 'id': 4, 'type': 'begin',
+    'source_uuid': 'box3', 'round_uuid': 'round_4'}
+  - {'step': 2, 'value': {'is_master': false}, 'id': 4, 'type': 'status', 'source_uuid': 'box1',
+    'round_uuid': 'round_4'}
+  - {'step': 2, 'value': {'is_master': true}, 'id': 4, 'type': 'status', 'source_uuid': 'box2',
+    'round_uuid': 'round_4'}
+  - {'step': 2, 'value': {'is_master': false}, 'id': 4, 'type': 'status', 'source_uuid': 'box4',
+    'round_uuid': 'round_4'}
+  - {'step': 3, 'value': {'code': 78, 'message': 'Timeout exceeded'}, 'id': 4, 'type': 'error',
+    'source_uuid': 'box1', 'round_uuid': 'round_4'}
+  - {'step': 3, 'value': {'code': 78, 'message': 'Timeout exceeded'}, 'id': 4, 'type': 'error',
+    'source_uuid': 'box2', 'round_uuid': 'round_4'}
+  - {'step': 3, 'value': {'code': 78, 'message': 'Timeout exceeded'}, 'id': 4, 'type': 'error',
+    'source_uuid': 'box4', 'round_uuid': 'round_4'}
+  - {'step': 4, 'value': {'code': 78, 'message': 'Timeout exceeded'}, 'id': 4, 'type': 'error',
+    'source_uuid': 'box3', 'round_uuid': 'round_4'}
+...
+_ = test_run:switch('default')
+---
+...
+test_run:drop_cluster(CLUSTER)
+---
+...

@@ -1,7 +1,7 @@
-#ifndef INCLUDES_TARANTOOL_CFG_H
-#define INCLUDES_TARANTOOL_CFG_H
+#ifndef INCLUDES_TARANTOOL_BOX_PROMOTE_H
+#define INCLUDES_TARANTOOL_BOX_PROMOTE_H
 /*
- * Copyright 2010-2016, Tarantool AUTHORS, please see AUTHORS file.
+ * Copyright 2010-2018, Tarantool AUTHORS, please see AUTHORS file.
  *
  * Redistribution and use in source and binary forms, with or
  * without modification, are permitted provided that the following
@@ -30,42 +30,67 @@
  * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+#include "tt_uuid.h"
+#include "diag.h"
+#include "fiber_cond.h"
 
-#include <stdint.h>
-
-#if defined(__cplusplus)
+#ifdef __cplusplus
 extern "C" {
-#endif /* defined(__cplusplus) */
+#endif /* __cplusplus */
+
+struct info_handler;
+
+enum promote_msg_type {
+	PROMOTE_MSG_BEGIN = 0,
+	PROMOTE_MSG_STATUS,
+	PROMOTE_MSG_SYNC,
+	PROMOTE_MSG_SUCCESS,
+	PROMOTE_MSG_ERROR,
+	promote_msg_type_MAX,
+};
+
+struct promote_msg {
+	int round_id;
+	struct tt_uuid round_uuid;
+	struct tt_uuid source_uuid;
+	double ts;
+	enum promote_msg_type type;
+	int step;
+	union {
+		struct {
+			int quorum;
+			double timeout;
+		} begin;
+		struct {
+			bool is_master;
+		} status;
+		struct {
+			int code;
+			const char *message;
+		} error;
+	};
+};
 
 int
-cfg_geti(const char *param);
-
-int
-cfg_geti_default(const char *param, int default_val);
-
-int64_t
-cfg_geti64(const char *param);
-
-const char *
-cfg_gets(const char *param);
-
-double
-cfg_getd(const char *param);
-
-double
-cfg_getd_default(const char *param, double default_val);
-
-int
-cfg_getarr_size(const char *name);
-
-const char *
-cfg_getarr_elem(const char *name, int i);
+promote_msg_decode(const char *data, struct promote_msg *msg);
 
 void
-cfg_rawsetb(const char *name, bool b);
+promote_process(const struct promote_msg *msg);
 
-#if defined(__cplusplus)
-} /* extern "C" */
-#endif /* defined(__cplusplus) */
+int
+box_ctl_promote(double timeout, int quorum);
 
-#endif /* INCLUDES_TARANTOOL_CFG_H */
+void
+box_ctl_promote_info(struct info_handler *info);
+
+int
+box_ctl_promote_reset(void);
+
+int
+box_ctl_promote_init(void);
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* INCLUDES_TARANTOOL_BOX_PROMOTE_H */

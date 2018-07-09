@@ -72,6 +72,7 @@
 #include "call.h"
 #include "func.h"
 #include "sequence.h"
+#include "promote.h"
 
 static char status[64] = "unknown";
 
@@ -213,6 +214,25 @@ box_set_ro(bool ro)
 {
 	is_ro = ro;
 	fiber_cond_broadcast(&ro_cond);
+}
+
+void
+box_expose_ro()
+{
+	cfg_rawsetb("read_only", is_ro);
+}
+
+int
+box_check_ro_is_mutable()
+{
+	struct space *s = space_by_id(BOX_PROMOTION_ID);
+	assert(s != NULL);
+	struct index *pk = space_index(s, 0);
+	if (index_count(pk, ITER_ALL, NULL, 0) == 0)
+		return 0;
+	diag_set(ClientError, ER_CFG, "read_only", "can not change the option "\
+		 "when box.ctl.promote() was used");
+	return -1;
 }
 
 bool
@@ -968,6 +988,16 @@ box_index_id_by_name(uint32_t space_id, const char *name, uint32_t len)
 	return result;
 }
 /** \endcond public */
+
+int
+box_process_sys_dml(struct request *request)
+{
+	/* Allow to write to temporary spaces in read-only mode. */
+	struct space *space = space_cache_find(request->space_id);
+	assert(space != NULL);
+	assert(space_is_system(space));
+	return process_dml(request, space, NULL);
+}
 
 int
 box_process_dml(struct request *request, box_tuple_t **result)
@@ -1959,6 +1989,7 @@ box_cfg_xc(void)
 	port_init();
 	iproto_init();
 	wal_thread_start();
+	box_ctl_promote_init();
 
 	title("loading");
 

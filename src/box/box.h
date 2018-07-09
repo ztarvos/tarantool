@@ -86,6 +86,12 @@ box_atfork(void);
 void
 box_set_ro(bool ro);
 
+void
+box_expose_ro();
+
+int
+box_check_ro_is_mutable();
+
 bool
 box_is_writable(void);
 
@@ -401,6 +407,9 @@ box_sequence_reset(uint32_t seq_id);
  */
 int
 box_process_dml(struct request *request, box_tuple_t **result);
+
+int
+box_process_sys_dml(struct request *request);
 
 int
 boxk(int type, uint32_t space_id, const char *format, ...);
