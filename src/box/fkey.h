@@ -103,6 +103,13 @@ struct fkey {
 };
 
 /**
+ * FIXME: as SQLite legacy temporary we use such mask throught
+ * SQL code. It should be replaced later with regular
+ * mask from column_mask.h
+ */
+#define FKEY_MASK(x) (((x)>31) ? 0xffffffff : ((uint64_t)1<<(x)))
+
+/**
  * Alongside with struct fkey_def itself, we reserve memory for
  * string containing its name and for array of links.
  * Memory layout:

@@ -10,7 +10,6 @@
 #define PragTyp_CASE_SENSITIVE_LIKE            2
 #define PragTyp_COLLATION_LIST                 3
 #define PragTyp_FLAG                           5
-#define PragTyp_FOREIGN_KEY_CHECK              8
 #define PragTyp_FOREIGN_KEY_LIST               9
 #define PragTyp_INDEX_INFO                    10
 #define PragTyp_INDEX_LIST                    11
@@ -79,8 +78,7 @@ static const char *const pragCName[] = {
 	/*  34 */ "on_update",
 	/*  35 */ "on_delete",
 	/*  36 */ "match",
-				/*  37 */ "table",
-				/* Used by: foreign_key_check */
+	/*  37 */ "table",
 	/*  38 */ "rowid",
 	/*  39 */ "parent",
 	/*  40 */ "fkid",
@@ -134,13 +132,6 @@ static const PragmaName aPragmaName[] = {
 	 /* ColNames:  */ 0, 0,
 	 /* iArg:      */ SQLITE_DeferFKs},
 #endif
-#endif
-#if !defined(SQLITE_OMIT_FOREIGN_KEY)
-	{ /* zName:     */ "foreign_key_check",
-	 /* ePragTyp:  */ PragTyp_FOREIGN_KEY_CHECK,
-	 /* ePragFlg:  */ PragFlg_NeedSchema,
-	 /* ColNames:  */ 37, 4,
-	 /* iArg:      */ 0},
 #endif
 #if !defined(SQLITE_OMIT_FOREIGN_KEY)
 	{ /* zName:     */ "foreign_key_list",

@@ -3680,6 +3680,50 @@ fkey_grab_by_name(struct rlist *list, const char *fkey_name)
 	return NULL;
 }
 
+static void
+fkey_set_mask(const struct fkey *fk, uint64_t *parent_mask,
+	      uint64_t *child_mask)
+{
+	for (uint32_t i = 0; i < fk->def->field_count; ++i) {
+		*parent_mask |= FKEY_MASK(fk->def->links[i].parent_field);
+		*child_mask |= FKEY_MASK(fk->def->links[i].child_field);
+	}
+}
+
+/**
+ * When we discard FK constraint (due to drop or rollback
+ * trigger), we can't simply unset appropriate bits in mask,
+ * since other constraints may refer to them as well. Thus,
+ * we have nothing left to do but completely rebuild mask.
+ */
+static void
+space_reset_fkey_mask(struct space *space)
+{
+	space->fkey_mask = 0;
+	struct fkey *fk;
+	rlist_foreach_entry(fk, &space->child_fkey, child_link)  {
+		struct fkey_def *def = fk->def;
+		for (uint32_t i = 0; i < def->field_count; ++i)
+			space->fkey_mask |=
+				FKEY_MASK(def->links[i].child_field);
+	}
+	rlist_foreach_entry(fk, &space->parent_fkey, parent_link)  {
+		struct fkey_def *def = fk->def;
+		for (uint32_t i = 0; i < def->field_count; ++i)
+			space->fkey_mask |=
+				FKEY_MASK(def->links[i].parent_field);
+	}
+}
+
+static void
+fkey_update_mask(const struct fkey *fkey)
+{
+	struct space *child = space_by_id(fkey->def->child_id);
+	space_reset_fkey_mask(child);
+	struct space *parent = space_by_id(fkey->def->parent_id);
+	space_reset_fkey_mask(parent);
+}
+
 /**
  * On rollback of creation we remove FK constraint from DD, i.e.
  * from parent's and child's lists of constraints and
@@ -3693,6 +3737,7 @@ on_create_fkey_rollback(struct trigger *trigger, void *event)
 	rlist_del_entry(fk, parent_link);
 	rlist_del_entry(fk, child_link);
 	fkey_delete(fk);
+	fkey_update_mask(fk);
 }
 
 /** Return old FK and release memory for the new one. */
@@ -3708,6 +3753,7 @@ on_replace_fkey_rollback(struct trigger *trigger, void *event)
 	fkey_delete(old_fkey);
 	rlist_add_entry(&child->child_fkey, fk, child_link);
 	rlist_add_entry(&parent->parent_fkey, fk, parent_link);
+	fkey_update_mask(fk);
 }
 
 /** On rollback of drop simply return back FK to DD. */
@@ -3720,6 +3766,7 @@ on_drop_fkey_rollback(struct trigger *trigger, void *event)
 	struct space *child = space_by_id(fk_to_restore->def->child_id);
 	rlist_add_entry(&child->child_fkey, fk_to_restore, child_link);
 	rlist_add_entry(&parent->parent_fkey, fk_to_restore, parent_link);
+	fkey_set_mask(fk_to_restore, &parent->fkey_mask, &child->fkey_mask);
 }
 
 /**
@@ -3732,6 +3779,7 @@ on_drop_or_replace_fkey_commit(struct trigger *trigger, void *event)
 {
 	(void) event;
 	struct fkey *fk = (struct fkey *)trigger->data;
+	fkey_update_mask(fk);
 	fkey_delete(fk);
 }
 
@@ -3884,6 +3932,8 @@ on_replace_dd_fk_constraint(struct trigger * /* trigger*/, void *event)
 				txn_alter_trigger_new(on_create_fkey_rollback,
 						      fkey);
 			txn_on_rollback(txn, on_rollback);
+			fkey_set_mask(fkey, &parent_space->fkey_mask,
+				      &child_space->fkey_mask);
 		} else {
 			struct fkey *old_fk =
 				fkey_grab_by_name(&child_space->child_fkey,
