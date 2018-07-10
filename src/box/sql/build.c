@@ -54,6 +54,65 @@
 #include "box/tuple_format.h"
 #include "box/coll_id_cache.h"
 
+#define mh_name _i32i32
+#define mh_key_t uint32_t
+struct mh_i32i32_node_t {
+	mh_key_t key;
+	uint32_t val;
+};
+
+#define mh_node_t struct mh_i32i32_node_t
+#define mh_arg_t uint32_t
+#define mh_hash(a, arg) (a->key)
+#define mh_hash_key(a, arg) (a)
+#define mh_cmp(a, b, arg) ((a->key) != (b->key))
+#define mh_cmp_key(a, b, arg) ((a) != (b->key))
+
+#define MH_SOURCE
+#include "salad/mhash.h"
+
+/**
+ * Emit access control checks. It should be noted that only
+ * checks for read need to be performed. DML/DDL requestes are
+ * checked for access by Tarantool's core.
+ *
+ * @param v Byte-code structure being translated.
+ */
+static void
+sql_emit_access_checks(struct Vdbe *v)
+{
+	struct mh_i32i32_t *space_set = mh_i32i32_new();
+	for(int i = 0; i < v->nOp; ++i) {
+		uint8_t op = v->aOp[i].opcode;
+		/* FIXME: when write iterators will be removed,
+		 * remove checks for OP_OpenWrite. Note, that
+		 * DML routines don't need access checks.
+		 * See gh-3182.
+		 */
+		if (op == OP_OpenRead || op == OP_OpenWrite) {
+			uint32_t space_id = 512; //v->aOp[i].p4.space->def->id;
+			mh_int_t mi = mh_i32i32_find(space_set, space_id, 0);
+			if (mi != mh_end(space_set))
+				continue;
+			struct mh_i32i32_node_t node = {space_id, PRIV_R};
+			mh_i32i32_put(space_set, &node, NULL, 0);
+		}
+	}
+
+	mh_int_t i = mh_first(space_set);
+	while (i != mh_end(space_set)) {
+		struct mh_i32i32_node_t *node = mh_i32i32_node(space_set, i);
+		sqlite3VdbeAddOp4(v, OP_AccessCheck,
+				  node->val,
+				  0,
+				  0,
+				  (void *)space_cache_find(node->key),
+				  P4_SPACEPTR);
+		i = mh_next(space_set, i);
+	}
+	mh_i32i32_delete(space_set);
+}
+
 void
 sql_finish_coding(struct Parse *parse_context)
 {
@@ -77,6 +136,7 @@ sql_finish_coding(struct Parse *parse_context)
 	int last_instruction = v->nOp;
 	if (parse_context->initiateTTrans)
 		sqlite3VdbeAddOp0(v, OP_TTransaction);
+	sql_emit_access_checks(v);
 	if (parse_context->pConstExpr != NULL) {
 		assert(sqlite3VdbeGetOp(v, 0)->opcode == OP_Init);
 		/*
@@ -101,11 +161,8 @@ sql_finish_coding(struct Parse *parse_context)
 	 *    ...
 	 * vdbe_end: OP_Goto 0 1 ...
 	 */
-	if (parse_context->initiateTTrans ||
-	    parse_context->pConstExpr != NULL) {
-		sqlite3VdbeChangeP2(v, 0, last_instruction);
-		sqlite3VdbeGoto(v, 1);
-	}
+	sqlite3VdbeChangeP2(v, 0, last_instruction);
+	sqlite3VdbeGoto(v, 1);
 	/* Get the VDBE program ready for execution. */
 	if (parse_context->nErr == 0 && !db->mallocFailed) {
 		assert(parse_context->iCacheLevel == 0);
