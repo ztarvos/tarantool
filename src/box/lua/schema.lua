@@ -1739,6 +1739,8 @@ local priv_object_combo = {
                            box.priv.C, box.priv.D),
     ["role"]     = bit.bor(box.priv.X, box.priv.U,
                            box.priv.C, box.priv.D),
+    ["user"]	 = bit.bor(box.priv.C, box.priv.U,
+                           box.priv.D),
 }
 
 --
@@ -1845,21 +1847,25 @@ local function object_resolve(object_type, object_name)
         end
         return seq
     end
-    if object_type == 'role' then
+    if object_type == 'role' or object_type == 'user' then
         local _vuser = box.space[box.schema.VUSER_ID]
-        local role
+        local role_or_user
+        if object_name == nil or object_name == 0 then
+            return 0
+        end
         if type(object_name) == 'string' then
-            role = _vuser.index.name:get{object_name}
+            role_or_user = _vuser.index.name:get{object_name}
         else
-            role = _vuser:get{object_name}
+            role_or_user = _vuser:get{object_name}
         end
-        if role and role[4] == 'role' then
-            return role[1]
-        else
+        if role_or_user and role_or_user[4] == object_type then
+            return role_or_user[1]
+        elseif object_type == 'role' then
             box.error(box.error.NO_SUCH_ROLE, object_name)
-        end
+        else
+            box.error(box.error.NO_SUCH_USER, object_name)
+	end
     end
-
     box.error(box.error.UNKNOWN_SCHEMA_OBJECT, object_type)
 end
 
@@ -2105,7 +2111,8 @@ local function grant(uid, name, privilege, object_type,
     if privilege_hex ~= old_privilege then
         _priv:replace{options.grantor, uid, object_type, oid, privilege_hex}
     elseif not options.if_not_exists then
-            if object_type == 'role' then
+            if object_type == 'role' and object_name ~= nil and
+	       object_name ~= 0 then
                 box.error(box.error.ROLE_GRANTED, name, object_name)
             else
                 box.error(box.error.PRIV_GRANTED, name, privilege,

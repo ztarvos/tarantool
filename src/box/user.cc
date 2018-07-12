@@ -229,6 +229,29 @@ access_find(struct priv_def *priv)
 			access = func->access;
 		break;
 	}
+	case SC_USER:
+	{
+		/*
+		 * user ID 0 is shared between user 'guest' and granting
+		 * privileges upon whole entity user. This is not a problem,
+		 * since we don't want to grant privileges on any system user,
+		 * including 'guest'.
+		 */
+		if(priv->object_id == 0) {
+			access = entity_access.user;
+			break;
+		}
+		/* No grants on a single object user yet. */
+	}
+	case SC_ROLE:
+	{
+		/* Tha same remark as in case SC_USER applies. */
+		if (priv->object_id == 0) {
+			access = entity_access.role;
+			break;
+		}
+		/* No grants on a single object role yet. */
+	}
 	case SC_SEQUENCE:
 	{
 		if (priv->object_id == 0) {
@@ -315,7 +338,7 @@ user_reload_privs(struct user *user)
 			 * Skip role grants, we're only
 			 * interested in real objects.
 			 */
-			if (priv.object_type != SC_ROLE)
+			if (priv.object_type != SC_ROLE || !(priv.access & PRIV_X))
 				user_grant_priv(user, &priv);
 		}
 	}

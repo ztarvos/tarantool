@@ -2170,7 +2170,7 @@ on_replace_dd_user(struct trigger * /* trigger */, void *event)
 	struct user *old_user = user_by_id(uid);
 	if (new_tuple != NULL && old_user == NULL) { /* INSERT */
 		struct user_def *user = user_def_new_from_tuple(new_tuple);
-		access_check_ddl(user->name, user->owner, SC_USER, PRIV_C, true);
+		access_check_ddl(user->name, user->owner, user->type, PRIV_C, true);
 		auto def_guard = make_scoped_guard([=] { free(user); });
 		(void) user_cache_replace(user);
 		def_guard.is_active = false;
@@ -2179,7 +2179,7 @@ on_replace_dd_user(struct trigger * /* trigger */, void *event)
 		txn_on_rollback(txn, on_rollback);
 	} else if (new_tuple == NULL) { /* DELETE */
 		access_check_ddl(old_user->def->name, old_user->def->owner,
-				 SC_USER, PRIV_D, true);
+				 old_user->def->type, PRIV_D, true);
 		/* Can't drop guest or super user */
 		if (uid <= (uint32_t) BOX_SYSTEM_USER_ID_MAX || uid == SUPER) {
 			tnt_raise(ClientError, ER_DROP_USER,
@@ -2205,6 +2205,14 @@ on_replace_dd_user(struct trigger * /* trigger */, void *event)
 		 * correct.
 		 */
 		struct user_def *user = user_def_new_from_tuple(new_tuple);
+		/* Do not allow changes for system users and roles. */
+		struct credentials *cr = effective_user();
+		if ((uid <= (uint32_t) BOX_SYSTEM_USER_ID_MAX || uid == SUPER) &&
+		    cr->uid != ADMIN) {
+			struct user *current_user = user_find_xc(cr->uid);
+			tnt_raise(AccessDeniedError, "alter", "user or role",
+				  old_user->def->name, current_user->def->name);
+		}
 		access_check_ddl(user->name, user->uid, SC_USER, PRIV_A,
 				 true);
 		auto def_guard = make_scoped_guard([=] { free(user); });
@@ -2625,26 +2633,49 @@ priv_def_check(struct priv_def *priv, enum priv_type priv_type)
 	}
 	case SC_ROLE:
 	{
-		struct user *role = user_by_id(priv->object_id);
-		if (role == NULL || role->def->type != SC_ROLE) {
-			tnt_raise(ClientError, ER_NO_SUCH_ROLE,
-				  role ? role->def->name :
-				  int2str(priv->object_id));
-		}
-		/*
-		 * Only the creator of the role can grant or revoke it.
-		 * Everyone can grant 'PUBLIC' role.
-		 */
-		if (role->def->owner != grantor->def->uid &&
-		    grantor->def->uid != ADMIN &&
-		    (role->def->uid != PUBLIC || priv->access != PRIV_X)) {
+		if (priv->object_id != 0) {
+			struct user *role = user_by_id(priv->object_id);
+			if (role == NULL || role->def->type != SC_ROLE) {
+				tnt_raise(ClientError, ER_NO_SUCH_ROLE,
+					  role ? role->def->name :
+					  int2str(priv->object_id));
+			}
+			/*
+			 * Only the creator of the role can grant or revoke it.
+			 * Everyone can grant 'PUBLIC' role.
+			 */
+			if (role->def->owner != grantor->def->uid &&
+			    grantor->def->uid != ADMIN &&
+			    (role->def->uid != PUBLIC || priv->access != PRIV_X)) {
+				tnt_raise(AccessDeniedError,
+					  priv_name(priv_type),
+					  schema_object_name(SC_ROLE), name,
+					  grantor->def->name);
+			}
+			/* Not necessary to do during revoke, but who cares. */
+			role_check(grantee, role);
+		} else if (grantor->def->uid != ADMIN) {
+			/* only admin may grant privileges on an entire entity. */
 			tnt_raise(AccessDeniedError,
 				  priv_name(priv_type),
 				  schema_object_name(SC_ROLE), name,
 				  grantor->def->name);
 		}
-		/* Not necessary to do during revoke, but who cares. */
-		role_check(grantee, role);
+		break;
+	}
+	case SC_USER:
+	{
+		struct user *user = NULL;
+		if (priv->object_id != 0)
+			user = user_by_id(priv->object_id);
+		if ((user == NULL || user->def->owner != grantor->def->uid) &&
+		    grantor->def->uid != ADMIN) {
+			tnt_raise(AccessDeniedError,
+				  priv_name(priv_type),
+				  schema_object_name(SC_USER), name,
+				  grantor->def->name);
+		}
+		break;
 	}
 	default:
 		break;
@@ -2665,7 +2696,12 @@ grant_or_revoke(struct priv_def *priv)
 	struct user *grantee = user_by_id(priv->grantee_id);
 	if (grantee == NULL)
 		return;
-	if (priv->object_type == SC_ROLE) {
+	/*
+	 * Grant a role to a user only when privilege type is 'execute'
+	 * and the role is specified.
+	 */
+	if (priv->object_type == SC_ROLE && !(priv->access & ~PRIV_X) &&
+	    priv->object_id != 0) {
 		struct user *role = user_by_id(priv->object_id);
 		if (role == NULL || role->def->type != SC_ROLE)
 			return;
