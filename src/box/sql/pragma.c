@@ -555,7 +555,6 @@ sqlite3Pragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 	}
 #endif				/* SQLITE_OMIT_SCHEMA_PRAGMAS */
 
-#ifndef SQLITE_OMIT_FOREIGN_KEY
 	case PragTyp_FOREIGN_KEY_LIST:{
 		if (zRight == NULL)
 			break;
@@ -591,7 +590,6 @@ sqlite3Pragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 		}
 		break;
 	}
-#endif				/* !defined(SQLITE_OMIT_FOREIGN_KEY) */
 #ifndef NDEBUG
 	case PragTyp_PARSER_TRACE:{
 			if (zRight) {
