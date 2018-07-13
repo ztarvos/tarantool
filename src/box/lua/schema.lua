@@ -1740,7 +1740,7 @@ local priv_object_combo = {
     ["role"]     = bit.bor(box.priv.X, box.priv.U,
                            box.priv.C, box.priv.D),
     ["user"]	 = bit.bor(box.priv.C, box.priv.U,
-                           box.priv.D),
+                           box.priv.A, box.priv.D),
 }
 
 --
@@ -2059,6 +2059,9 @@ box.schema.user.create = function(name, opts)
     uid = _user:auto_increment{session.euid(), name, 'user', auth_mech_list}[1]
     -- grant role 'public' to the user
     box.schema.user.grant(uid, 'public')
+    -- grant user 'alter' on itself, so it can
+    -- change its password or username.
+    box.schema.user.grant(uid, 'alter', 'user', uid)
     -- we have to grant global privileges from setuid function, since
     -- only admin has the ownership over universe and we don't have
     -- grant option

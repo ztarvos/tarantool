@@ -241,7 +241,10 @@ access_find(struct priv_def *priv)
 			access = entity_access.user;
 			break;
 		}
-		/* No grants on a single object user yet. */
+		struct user *user = user_by_id(priv->object_id);
+		if (user)
+			access = user->access;
+		break;
 	}
 	case SC_ROLE:
 	{
@@ -250,7 +253,10 @@ access_find(struct priv_def *priv)
 			access = entity_access.role;
 			break;
 		}
-		/* No grants on a single object role yet. */
+		struct user *role = user_by_id(priv->object_id);
+		if (role)
+			access = role->access;
+		break;
 	}
 	case SC_SEQUENCE:
 	{
