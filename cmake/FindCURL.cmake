@@ -16,7 +16,10 @@
 #   CURL_FOUND          - True if curl found.
 #   CURL_VERSION_STRING - the version of curl found (since CMake 2.8.8)
 
-set(CURL_STATIC libcurl.a)
+if(BUILD_STATIC)
+    set(CURL_STATIC libcurl.a)
+    set(Z_LIBRARY_STATIC libz.a)
+endif()
 
 if(DEFINED CURL_ROOT)
     set(CURL_FIND_OPTS NO_CMAKE NO_CMAKE_SYSTEM_PATH)
@@ -69,8 +72,7 @@ FIND_PACKAGE_HANDLE_STANDARD_ARGS(CURL
                                   VERSION_VAR CURL_VERSION_STRING)
 
 find_library(Z_LIBRARY NAMES
-#libz used in a libssl library
-    libz.a
+    ${Z_LIBRARY_STATIC}
     z
 )
 

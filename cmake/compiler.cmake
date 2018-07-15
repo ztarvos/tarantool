@@ -116,7 +116,9 @@ set (CMAKE_CXX_FLAGS_RELWITHDEBINFO
 unset(CC_DEBUG_OPT)
 
 check_include_file(libunwind.h HAVE_LIBUNWIND_H)
-set(UNWIND_STATIC libunwind.a)
+if(BUILD_STATIC)
+    set(UNWIND_STATIC libunwind.a)
+endif()
 find_library(UNWIND_LIBRARY PATH_SUFFIXES system NAMES ${UNWIND_STATIC} unwind)
 
 set(ENABLE_BACKTRACE_DEFAULT OFF)
@@ -138,16 +140,24 @@ if (ENABLE_BACKTRACE)
     else()
         if (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR
             CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    	    set(UNWIND_PLATFORM_STATIC "libunwind-${CMAKE_SYSTEM_PROCESSOR}.a")
+            if(BUILD_STATIC)
+                set(UNWIND_PLATFORM_STATIC "libunwind-${CMAKE_SYSTEM_PROCESSOR}.a")
+            endif()
             find_library(UNWIND_PLATFORM_LIBRARY PATH_SUFFIXES system
 		    NAMES ${UNWIND_PLATFORM_STATIC}
 			 "unwind-${CMAKE_SYSTEM_PROCESSOR}")
         elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "i686")
+            if(BUILD_STATIC)
+                set(UNWIND_PLATFORM_STATIC "libunwind-x86.a")
+            endif()
             find_library(UNWIND_PLATFORM_LIBRARY PATH_SUFFIXES system
-                         NAMES "libunwind-x86.a" "unwind-x86")
+                         NAMES ${UNWIND_PLATFORM_STATIC} "unwind-x86")
         elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm*")
+            if(BUILD_STATIC)
+                set(UNWIND_PLATFORM_STATIC "libunwind-arm.a")
+            endif()
             find_library(UNWIND_PLATFORM_LIBRARY PATH_SUFFIXES system
-                         NAMES "libunwind-arm.a" "unwind-arm")
+                         NAMES ${UNWIND_PLATFORM_STATIC} "unwind-arm")
         endif()
         set (UNWIND_LIBRARIES ${UNWIND_PLATFORM_LIBRARY} ${UNWIND_LIBRARY})
     endif()

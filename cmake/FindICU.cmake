@@ -21,9 +21,12 @@ find_path(ICU_INCLUDE_DIR
     HINTS ${ICU_FIND_PATH_HINTS}
     ${ICU_FIND_OPTS}
 )
-set(ICU_I18N_STATIC libicui18n.a)
-set(ICU_UC_STATIC libicuuc.a)
-set(ICU_DATA_STATIC libicudata.a)
+
+if(BUILD_STATIC)
+    set(ICU_I18N_STATIC libicui18n.a)
+    set(ICU_UC_STATIC libicuuc.a)
+    set(ICU_DATA_STATIC libicudata.a)
+endif()
 
 find_library(ICU_LIBRARY_I18N NAMES ${ICU_I18N_STATIC} icui18n
     HINTS ${ICU_FIND_LIBRARY_HINTS}

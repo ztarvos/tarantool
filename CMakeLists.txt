@@ -415,7 +415,6 @@ endif()
 #
 # OpenSSL
 #
-
 find_package(OpenSSL)
 if (OPENSSL_FOUND)
     message(STATUS "OpenSSL ${OPENSSL_VERSION} found")

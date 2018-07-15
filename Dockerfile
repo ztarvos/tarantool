@@ -74,9 +74,8 @@ RUN set -x && \
 
 RUN set -x && \
     cd / && \
-    git clone https://github.com/tarantool/tarantool.git && \
+    git clone -b g.kirichenko/static-build-v2 https://github.com/tarantool/tarantool.git && \
     cd tarantool && \
-    git checkout k.nazarov/static-build && \
     git submodule init && \
     git submodule update
 
@@ -87,5 +86,7 @@ RUN set -x \
              -DENABLE_BUNDLED_LIBYAML:BOOL=ON\
              -DENABLE_BACKTRACE:BOOL=ON\
              -DENABLE_DIST:BOOL=ON\
+	     -DBUILD_STATIC=ON\
+	     -DOPENSSL_USE_STATIC_LIBS=ON\
              .) \
     && make -C /tarantool -j

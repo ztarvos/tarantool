@@ -219,10 +219,11 @@ target_link_libraries(server core bit uri uuid ${ICU_LIBRARIES})
 set (reexport_libraries server core misc bitset csv
      ${LUAJIT_LIBRARIES} ${MSGPUCK_LIBRARIES} ${ICU_LIBRARIES})
 
-set(Z_STATIC libz.a)
+if(BUILD_STATIC)
+    set(Z_STATIC libz.a)
+    set(M_STATIC libm.a)
+endif()
 find_library(Z_LIBRARY NAMES ${Z_STATIC} z)
-
-set(M_STATIC libm.a)
 find_library(M_LIBRARY NAMES ${M_STATIC} m)
 
 set (common_libraries

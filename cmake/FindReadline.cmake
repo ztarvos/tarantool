@@ -6,11 +6,12 @@
 # READLINE_LIBRARIES
 #
 
-find_library(CURSES_CURSES_LIBRARY NAMES libcurses.a)
-find_library(CURSES_NCURSES_LIBRARY NAMES libncurses.a)
-find_library(CURSES_FORM_LIBRARY NAMES libform.a)
-find_library(CURSES_INFO_LIBRARY NAMES libtinfo.a)
-
+if(BUILD_STATIC)
+    find_library(CURSES_CURSES_LIBRARY NAMES libcurses.a)
+    find_library(CURSES_NCURSES_LIBRARY NAMES libncurses.a)
+    find_library(CURSES_FORM_LIBRARY NAMES libform.a)
+    find_library(CURSES_INFO_LIBRARY NAMES libtinfo.a)
+endif()
 find_package(Curses)
 if(NOT CURSES_FOUND)
     find_package(Termcap)

@@ -35,8 +35,12 @@ macro(libmisc_build)
 
     if (HAVE_OPENMP)
         target_compile_options(misc PRIVATE "-fopenmp")
-	set(GOMP_LIBRARY libgomp.a)
-	target_link_libraries(misc pthread ${GOMP_LIBRARY})
+	if(BUILD_STATIC)
+            set(GOMP_LIBRARY libgomp.a)
+        else()
+            set(GOMP_LIBRARY gomp)
+        endif()
+        target_link_libraries(misc pthread ${GOMP_LIBRARY})
     endif()
 
 
