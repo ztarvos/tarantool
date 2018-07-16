@@ -960,8 +960,30 @@ local function create_vsequence_space()
     box.space._vsequence:format(sequence_format)
 end
 
+local function upgrade_users_to_1_10_0()
+    local _priv = box.space[box.schema.PRIV_ID]
+    local _user = box.space[box.schema.USER_ID]
+
+    for _, user in _user:pairs() do
+        if user[0] ~= ADMIN and user[0] ~= SUPER then
+            for _, priv in _priv:pairs(user[0]) do
+                if bit.band(priv[5], box.priv.W) ~= 0 and
+                bit.band(priv[5], box.priv.R) ~= 0 then
+                    local new_privs = bit.bor(box.priv.A, box.priv.D)
+                    if priv[4] == 0 then
+                        new_privs = bit.bor(new_privs, box.priv.C)
+                    end
+                    _priv:update({priv[2], priv[3], priv[4]},
+                                 {{ "|", 5, new_privs}})
+                end
+            end
+        end
+    end
+end
+
 local function upgrade_to_1_10_0()
     create_vsequence_space()
+    upgrade_users_to_1_10_0()
 end
 
 

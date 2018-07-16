@@ -13,7 +13,6 @@ box.cfg{checkpoint_count = 1}
 function wait_gc(n) while #box.info.gc().checkpoints > n do fiber.sleep(0.01) end end
 
 -- Grant permissions needed for replication.
-box.schema.user.grant('guest', 'read,write,execute', 'universe')
 box.schema.user.grant('guest', 'replication')
 
 -- By default, relay thread reports status to tx once a second.
@@ -176,6 +175,5 @@ replica_set.drop_all(test_run)
 s:drop()
 box.error.injection.set("ERRINJ_RELAY_REPORT_INTERVAL", 0)
 box.schema.user.revoke('guest', 'replication')
-box.schema.user.revoke('guest', 'read,write,execute', 'universe')
 
 box.cfg{checkpoint_count = default_checkpoint_count}
