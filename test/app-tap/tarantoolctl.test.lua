@@ -150,7 +150,7 @@ local function check_ok(test, dir, cmd, args, e_res, e_stdout, e_stderr)
 end
 
 local test = tap.test('tarantoolctl')
-test:plan(6)
+test:plan(7)
 
 -- basic start/stop test
 -- must be stopped afterwards
@@ -246,6 +246,33 @@ do
 
     if status == false then
         print(("Error: %s"):format(err))
+        os.exit()
+    end
+end
+
+-- check enter
+do
+    local dir = fio.tempdir()
+
+    local code = [[ box.cfg{} ]]
+    create_script(dir, 'script.lua', code)
+
+    local status, err = pcall(function()
+        test:test("check error codes in case of enter", function(test_i)
+            test_i:plan(6)
+            check_ok(test_i, dir, 'enter', 'script', 1, nil, "Can't connect to")
+            check_ok(test_i, dir, 'start', 'script', 0)
+            os.execute(("kill $(cat %s/script.pid)"):format(dir))
+            check_ok(test_i, dir, 'enter', 'script', 1, nil, "Can't connect to")
+            check_ok(test_i, dir, 'stop','script', 0)
+        end)
+    end)
+
+    cleanup_instance(dir, 'script')
+    recursive_rmdir(dir)
+
+    if status == false then
+        prit(("Error: %s"):format(err))
         os.exit()
     end
 end
