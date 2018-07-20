@@ -121,6 +121,7 @@ sql_table_delete_from(struct Parse *parse, struct SrcList *tab_list,
 		/* Prevent from freeing memory in DeleteTable. */
 		tmp_tab.nTabRef = 2;
 		tab_list->a[0].pTab = &tmp_tab;
+		table = &tmp_tab;
 	} else {
 		table = sql_list_lookup_table(parse, tab_list);
 		if (table == NULL)
@@ -308,8 +309,11 @@ sql_table_delete_from(struct Parse *parse, struct SrcList *tab_list,
 			 */
 			key_len = 0;
 			struct Index *pk = sqlite3PrimaryKeyIndex(table);
-			const char *zAff = is_view ? NULL :
-					  sqlite3IndexAffinityStr(parse->db, pk);
+			const char *zAff = NULL;
+			if (pk != NULL) {
+				zAff = is_view ? NULL :
+					sqlite3IndexAffinityStr(parse->db, pk);
+			}
 			sqlite3VdbeAddOp4(v, OP_MakeRecord, reg_pk, pk_len,
 					  reg_key, zAff, pk_len);
 			/* Set flag to save memory allocating one
@@ -436,7 +440,7 @@ sql_generate_row_delete(struct Parse *parse, struct Table *table,
 	/* If there are any triggers to fire, allocate a range of registers to
 	 * use for the old.* references in the triggers.
 	 */
-	if (table != NULL &&
+	if (table != NULL && sqlite3PrimaryKeyIndex(table) != NULL &&
 	    (sqlite3FkRequired(table, NULL) || trigger_list != NULL)) {
 		/* Mask of OLD.* columns in use */
 		/* TODO: Could use temporary registers here. */
@@ -511,7 +515,7 @@ sql_generate_row_delete(struct Parse *parse, struct Table *table,
 		sqlite3VdbeChangeP5(v, p5);
 	}
 
-	if (table != NULL) {
+	if (table != NULL && sqlite3PrimaryKeyIndex(table) != NULL) {
 		/* Do any ON CASCADE, SET NULL or SET DEFAULT
 		 * operations required to handle rows (possibly
 		 * in other tables) that refer via a foreign
