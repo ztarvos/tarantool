@@ -6,7 +6,7 @@ local socket = require('socket')
 local fio = require('fio')
 local uuid = require('uuid')
 local msgpack = require('msgpack')
-test:plan(95)
+test:plan(96)
 
 --------------------------------------------------------------------------------
 -- Invalid values
@@ -463,6 +463,14 @@ test:is(run_script(code), PANIC, "instance_uuid mismatch")
 code = string.format(code_fmt, dir, instance_uuid, uuid.new())
 test:is(run_script(code), PANIC, "replicaset_uuid mismatch")
 fio.rmdir(dir)
+
+--
+-- Check syslog configuration
+-- (syslog daemon may be not started hence use pcall)
+--
+code = [[pcall(box.cfg, {log = 'syslog:identity=tarantool'})
+]]
+test:is(run_script(code), 0, "syslog log configuration")
 
 test:check()
 os.exit(0)
