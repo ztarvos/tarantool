@@ -6,7 +6,7 @@ local socket = require('socket')
 local fio = require('fio')
 local uuid = require('uuid')
 local msgpack = require('msgpack')
-test:plan(96)
+test:plan(97)
 
 --------------------------------------------------------------------------------
 -- Invalid values
@@ -471,6 +471,34 @@ fio.rmdir(dir)
 code = [[pcall(box.cfg, {log = 'syslog:identity=tarantool'})
 ]]
 test:is(run_script(code), 0, "syslog log configuration")
+
+--
+-- Check syslog unix socket configuration
+--
+code = [[
+local socket = require('socket')
+local log = require('log')
+local fio = require('fio')
+
+path = fio.pathjoin(fio.cwd(), 'log_unix_socket_test.sock')
+unix_socket = socket('AF_UNIX', 'SOCK_DGRAM', 0)
+unix_socket:bind('unix/', path)
+
+opt = string.format("syslog:server=unix:%s,identity=tarantool", path)
+local res = 1
+local buf = 'Started\n'
+box.cfg{log = opt, log_level = 5}
+log.info("Test socket syslog destination")
+while unix_socket:readable(1) do
+    buf = buf .. unix_socket:recv(1000)
+    if buf:match('Test socket syslog destination') then res = 0 end
+end
+
+unix_socket:close()                                                         
+os.remove(path) 
+os.exit(res)
+]]
+test:is(run_script(code), 0, "unix socket syslog log configuration")
 
 test:check()
 os.exit(0)
