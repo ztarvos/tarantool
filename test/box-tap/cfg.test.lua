@@ -6,7 +6,7 @@ local socket = require('socket')
 local fio = require('fio')
 local uuid = require('uuid')
 local msgpack = require('msgpack')
-test:plan(97)
+test:plan(98)
 
 --------------------------------------------------------------------------------
 -- Invalid values
@@ -499,6 +499,43 @@ os.remove(path)
 os.exit(res)
 ]]
 test:is(run_script(code), 0, "unix socket syslog log configuration")
+
+--
+-- Check syslog remote configuration
+--
+code = [[
+local socket = require('socket')
+local log = require('log')
+
+addr = '127.0.0.1'
+port = 1000 + math.random(32768)
+
+sc = socket('AF_INET', 'SOCK_DGRAM', 'udp')
+local attempt = 0
+while attempt < 10 do
+    if not sc:bind (addr, port) then
+        port = 1000 + math.random(32768)
+        attempt = attempt + 1
+    else
+        break
+    end
+end
+sc:bind(addr, port)
+
+local opt = string.format("syslog:server=%s:%u,identity=tarantool", addr, port)
+local res = 1
+local buf = 'Started\n'
+box.cfg{log = opt, log_level = 5}
+log.info('Test syslog destination')
+while sc:readable(1) do
+    buf = buf .. sc:recv(1000)
+    if buf:match('Test syslog destination') then res = 0 end
+end
+
+sc:close()
+os.exit(res)
+]]
+test:is(run_script(code), 0, "remote syslog log configuration")
 
 test:check()
 os.exit(0)
