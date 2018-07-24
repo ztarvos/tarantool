@@ -597,6 +597,9 @@ local function update_index_parts(format, parts)
                 elseif k == 'is_nullable' then
                     part[k] = v
                     parts_can_be_simplified = false
+                elseif k == 'data_format' then
+                    part[k] = v
+                    parts_can_be_simplified = false
                 else
                     part[k] = v
                     parts_can_be_simplified = false
@@ -654,8 +657,8 @@ end
 local function simplify_index_parts(parts)
     local new_parts = {}
     for i, part in pairs(parts) do
-        assert(part.collation == nil and part.is_nullable == nil,
-               "part is simple")
+        assert(part.collation == nil and part.is_nullable == nil and
+               part.data_format == nil, "part is simple")
         new_parts[i] = {part.field, part.type}
     end
     return new_parts

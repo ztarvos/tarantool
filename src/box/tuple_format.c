@@ -558,7 +558,7 @@ tuple_field_raw_by_path(struct tuple_format *format, const char *tuple,
 	 */
 	if (tuple_fieldno_by_name(format->dict, path, path_len, path_hash,
 				  &fieldno) == 0) {
-		*field = tuple_field_raw(format, tuple, field_map, fieldno);
+		*field = tuple_field_raw(format, tuple, field_map, fieldno, 0);
 		return 0;
 	}
 	struct json_path_parser parser;
@@ -575,7 +575,7 @@ tuple_field_raw_by_path(struct tuple_format *format, const char *tuple,
 			return 0;
 		}
 		index -= TUPLE_INDEX_BASE;
-		*field = tuple_field_raw(format, tuple, field_map, index);
+		*field = tuple_field_raw(format, tuple, field_map, index, 0);
 		if (*field == NULL)
 			return 0;
 		break;

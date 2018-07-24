@@ -330,13 +330,15 @@ tuple_init_field_map(const struct tuple_format *format, uint32_t *field_map,
  * @param tuple a pointer to MessagePack array
  * @param field_map a pointer to the LAST element of field map
  * @param field_no the index of field to return
+ * @param data_offset relative offset to data in field
  *
  * @returns field data if field exists or NULL
  * @sa tuple_init_field_map()
  */
 static inline const char *
 tuple_field_raw(const struct tuple_format *format, const char *tuple,
-		const uint32_t *field_map, uint32_t field_no)
+		const uint32_t *field_map, uint32_t field_no,
+		uint32_t data_offset)
 {
 	if (likely(field_no < format->index_field_count)) {
 		/* Indexed field */
@@ -349,7 +351,8 @@ tuple_field_raw(const struct tuple_format *format, const char *tuple,
 		int32_t offset_slot = format->fields[field_no].offset_slot;
 		if (offset_slot != TUPLE_OFFSET_SLOT_NIL) {
 			if (field_map[offset_slot] != 0)
-				return tuple + field_map[offset_slot];
+				return tuple + field_map[offset_slot] +
+				       data_offset;
 			else
 				return NULL;
 		}
@@ -360,7 +363,7 @@ tuple_field_raw(const struct tuple_format *format, const char *tuple,
 		return NULL;
 	for (uint32_t k = 0; k < field_no; k++)
 		mp_next(&tuple);
-	return tuple;
+	return tuple + data_offset;
 }
 
 /**
@@ -384,7 +387,7 @@ tuple_field_raw_by_name(struct tuple_format *format, const char *tuple,
 	if (tuple_fieldno_by_name(format->dict, name, name_len, name_hash,
 				  &fieldno) != 0)
 		return NULL;
-	return tuple_field_raw(format, tuple, field_map, fieldno);
+	return tuple_field_raw(format, tuple, field_map, fieldno, 0);
 }
 
 /**

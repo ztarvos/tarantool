@@ -54,6 +54,8 @@ struct key_part_def {
 	uint32_t coll_id;
 	/** True if a key part can store NULLs. */
 	bool is_nullable;
+	/** Tuple field index data json path. */
+	char *data_format;
 };
 
 /**
@@ -66,6 +68,10 @@ struct key_part_def {
 struct key_part {
 	/** Tuple field index for this part */
 	uint32_t fieldno;
+	/** Relative offset for json index. */
+	uint32_t data_offset;
+	/** Data path */
+	const char *data_format;
 	/** Type of the tuple field */
 	enum field_type type;
 	/** Collation ID for string comparison. */
@@ -252,7 +258,7 @@ key_def_dump_parts(const struct key_def *def, struct key_part_def *parts);
 void
 key_def_set_part(struct key_def *def, uint32_t part_no, uint32_t fieldno,
 		 enum field_type type, bool is_nullable, struct coll *coll,
-		 uint32_t coll_id);
+		 uint32_t coll_id, const char *data_format);
 
 /**
  * Update 'has_optional_parts' of @a key_def with correspondence

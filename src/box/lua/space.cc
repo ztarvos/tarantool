@@ -298,6 +298,11 @@ lbox_fillspace(struct lua_State *L, struct space *space, int i)
 			lua_pushboolean(L, part->is_nullable);
 			lua_setfield(L, -2, "is_nullable");
 
+			if (part->data_format != NULL) {
+				lua_pushstring(L, part->data_format);
+				lua_setfield(L, -2, "data_format");
+			}
+
 			if (part->coll_id != COLL_NONE) {
 				struct coll_id *coll_id =
 					coll_by_id(part->coll_id);

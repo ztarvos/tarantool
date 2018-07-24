@@ -518,7 +518,7 @@ static inline const char *
 tuple_field(const struct tuple *tuple, uint32_t fieldno)
 {
 	return tuple_field_raw(tuple_format(tuple), tuple_data(tuple),
-			       tuple_field_map(tuple), fieldno);
+			       tuple_field_map(tuple), fieldno, 0);
 }
 
 /**

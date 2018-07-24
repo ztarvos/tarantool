@@ -28,6 +28,8 @@
  * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+#include "json/path.h"
+#include "fiber.h"
 #include "key_def.h"
 #include "tuple_compare.h"
 #include "tuple_extract_key.h"
@@ -41,6 +43,7 @@ static const struct key_part_def key_part_def_default = {
 	field_type_MAX,
 	COLL_NONE,
 	false,
+	NULL,
 };
 
 static int64_t
@@ -53,6 +56,7 @@ part_type_by_name_wrapper(const char *str, uint32_t len)
 #define PART_OPT_FIELD		"field"
 #define PART_OPT_COLLATION	"collation"
 #define PART_OPT_NULLABILITY	"is_nullable"
+#define PART_OPT_DATA_FORMAT	"data_format"
 
 const struct opt_def part_def_reg[] = {
 	OPT_DEF_ENUM(PART_OPT_TYPE, field_type, struct key_part_def, type,
@@ -61,6 +65,8 @@ const struct opt_def part_def_reg[] = {
 	OPT_DEF(PART_OPT_COLLATION, OPT_UINT32, struct key_part_def, coll_id),
 	OPT_DEF(PART_OPT_NULLABILITY, OPT_BOOL, struct key_part_def,
 		is_nullable),
+	OPT_DEF(PART_OPT_DATA_FORMAT, OPT_STRPTR, struct key_part_def,
+		data_format),
 	OPT_END,
 };
 
@@ -166,7 +172,8 @@ key_def_new_with_parts(struct key_part_def *parts, uint32_t part_count)
 			coll = coll_id->coll;
 		}
 		key_def_set_part(def, i, part->fieldno, part->type,
-				 part->is_nullable, coll, part->coll_id);
+				 part->is_nullable, coll, part->coll_id,
+				 part->data_format);
 	}
 	return def;
 }
@@ -181,6 +188,8 @@ key_def_dump_parts(const struct key_def *def, struct key_part_def *parts)
 		part_def->type = part->type;
 		part_def->is_nullable = part->is_nullable;
 		part_def->coll_id = part->coll_id;
+		part_def->data_format = (part->data_format != NULL) ?
+					 strdup(part->data_format) : NULL;
 	}
 }
 
@@ -195,7 +204,7 @@ box_key_def_new(uint32_t *fields, uint32_t *types, uint32_t part_count)
 		key_def_set_part(key_def, item, fields[item],
 				 (enum field_type)types[item],
 				 key_part_def_default.is_nullable, NULL,
-				 COLL_NONE);
+				 COLL_NONE, NULL);
 	}
 	return key_def;
 }
@@ -241,6 +250,14 @@ key_part_cmp(const struct key_part *parts1, uint32_t part_count1,
 		if (part1->is_nullable != part2->is_nullable)
 			return part1->is_nullable <
 			       part2->is_nullable ? -1 : 1;
+		if (part1->data_format != NULL && part2->data_format != NULL) {
+			int rc = strcmp(part1->data_format, part2->data_format);
+			if (rc != 0)
+				return rc;
+		} else if (part1->data_format != part2->data_format) {
+			return part1->data_format <
+			       part2->data_format ? -1 : 1;
+		}
 	}
 	return part_count1 < part_count2 ? -1 : part_count1 > part_count2;
 }
@@ -248,13 +265,16 @@ key_part_cmp(const struct key_part *parts1, uint32_t part_count1,
 void
 key_def_set_part(struct key_def *def, uint32_t part_no, uint32_t fieldno,
 		 enum field_type type, bool is_nullable, struct coll *coll,
-		 uint32_t coll_id)
+		 uint32_t coll_id, const char *data_format)
 {
 	assert(part_no < def->part_count);
 	assert(type < field_type_MAX);
 	def->is_nullable |= is_nullable;
 	def->parts[part_no].is_nullable = is_nullable;
 	def->parts[part_no].fieldno = fieldno;
+	def->parts[part_no].data_format =
+		data_format != NULL ? strdup(data_format) : NULL;
+	def->parts[part_no].data_offset = 0;
 	def->parts[part_no].type = type;
 	def->parts[part_no].coll = coll;
 	def->parts[part_no].coll_id = coll_id;
@@ -322,6 +342,8 @@ key_def_sizeof_parts(const struct key_part_def *parts, uint32_t part_count)
 			count++;
 		if (part->is_nullable)
 			count++;
+		if (part->data_format != NULL)
+			count++;
 		size += mp_sizeof_map(count);
 		size += mp_sizeof_str(strlen(PART_OPT_FIELD));
 		size += mp_sizeof_uint(part->fieldno);
@@ -335,6 +357,10 @@ key_def_sizeof_parts(const struct key_part_def *parts, uint32_t part_count)
 		if (part->is_nullable) {
 			size += mp_sizeof_str(strlen(PART_OPT_NULLABILITY));
 			size += mp_sizeof_bool(part->is_nullable);
+		}
+		if (part->data_format != NULL) {
+			size += mp_sizeof_str(strlen(PART_OPT_DATA_FORMAT));
+			size += mp_sizeof_str(strlen(part->data_format));
 		}
 	}
 	return size;
@@ -350,6 +376,8 @@ key_def_encode_parts(char *data, const struct key_part_def *parts,
 		if (part->coll_id != COLL_NONE)
 			count++;
 		if (part->is_nullable)
+			count++;
+		if (part->data_format != NULL)
 			count++;
 		data = mp_encode_map(data, count);
 		data = mp_encode_str(data, PART_OPT_FIELD,
@@ -369,6 +397,12 @@ key_def_encode_parts(char *data, const struct key_part_def *parts,
 			data = mp_encode_str(data, PART_OPT_NULLABILITY,
 					     strlen(PART_OPT_NULLABILITY));
 			data = mp_encode_bool(data, part->is_nullable);
+		}
+		if (part->data_format != NULL) {
+			data = mp_encode_str(data, PART_OPT_DATA_FORMAT,
+					     strlen(PART_OPT_DATA_FORMAT));
+			data = mp_encode_str(data, part->data_format,
+					     strlen(part->data_format));
 		}
 	}
 	return data;
@@ -430,6 +464,7 @@ key_def_decode_parts_166(struct key_part_def *parts, uint32_t part_count,
 				     fields[part->fieldno].is_nullable :
 				     key_part_def_default.is_nullable);
 		part->coll_id = COLL_NONE;
+		part->data_format = NULL;
 	}
 	return 0;
 }
@@ -454,7 +489,7 @@ key_def_decode_parts(struct key_part_def *parts, uint32_t part_count,
 		*part = key_part_def_default;
 		if (opts_decode(part, part_def_reg, data,
 				ER_WRONG_INDEX_OPTIONS, i + TUPLE_INDEX_BASE,
-				NULL) != 0)
+				&fiber()->gc) != 0)
 			return -1;
 		if (part->type == field_type_MAX) {
 			diag_set(ClientError, ER_WRONG_INDEX_OPTIONS,
@@ -470,6 +505,22 @@ key_def_decode_parts(struct key_part_def *parts, uint32_t part_count,
 				 "collation is reasonable only for "
 				 "string and scalar parts");
 			return -1;
+		}
+		if (part->data_format != NULL) {
+			/* Validate data_format json. */
+			struct json_path_parser parser;
+			struct json_path_node node;
+			json_path_parser_create(&parser, part->data_format,
+						strlen(part->data_format));
+			int rc = 0;
+			while ((rc = json_path_next(&parser, &node)) == 0 &&
+				node.type != JSON_PATH_END) {};
+			if (rc != 0 || node.type != JSON_PATH_END) {
+				diag_set(ClientError, ER_WRONG_INDEX_OPTIONS,
+					 i + TUPLE_INDEX_BASE,
+					 "data_format is invalid json.");
+				return -1;
+			}
 		}
 	}
 	return 0;
@@ -495,6 +546,7 @@ key_def_decode_parts_160(struct key_part_def *parts, uint32_t part_count,
 				     fields[part->fieldno].is_nullable :
 				     key_part_def_default.is_nullable);
 		part->coll_id = COLL_NONE;
+		part->data_format = NULL;
 	}
 	return 0;
 }
@@ -557,7 +609,8 @@ key_def_merge(const struct key_def *first, const struct key_def *second)
 	end = part + first->part_count;
 	for (; part != end; part++) {
 		key_def_set_part(new_def, pos++, part->fieldno, part->type,
-				 part->is_nullable, part->coll, part->coll_id);
+				 part->is_nullable, part->coll, part->coll_id,
+				 part->data_format);
 	}
 
 	/* Set-append second key def's part to the new key def. */
@@ -567,7 +620,8 @@ key_def_merge(const struct key_def *first, const struct key_def *second)
 		if (key_def_find(first, part->fieldno))
 			continue;
 		key_def_set_part(new_def, pos++, part->fieldno, part->type,
-				 part->is_nullable, part->coll, part->coll_id);
+				 part->is_nullable, part->coll, part->coll_id,
+				 part->data_format);
 	}
 	return new_def;
 }
