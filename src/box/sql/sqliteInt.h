@@ -1916,9 +1916,6 @@ struct Table {
 	 */
 	LogEst tuple_log_count;
 	u8 tabFlags;		/* Mask of TF_* values */
-#ifndef SQLITE_OMIT_ALTERTABLE
-	int addColOffset;	/* Offset in CREATE TABLE stmt to add a new column */
-#endif
 	Schema *pSchema;	/* Schema that contains this table */
 	Table *pNextZombie;	/* Next on the Parse.pZombieTab list */
 	/** Space definition with Tarantool metadata. */
@@ -3546,7 +3543,7 @@ void sqlite3AddCollateType(Parse *, Token *);
 struct coll *
 sql_column_collation(struct space_def *def, uint32_t column, uint32_t *coll_id);
 
-void sqlite3EndTable(Parse *, Token *, Token *, Select *);
+void sqlite3EndTable(Parse *, Token *, Select *);
 
 /**
  * Create cursor which will be positioned to the space/index.
@@ -4519,8 +4516,6 @@ int sqlite3ResolveOrderGroupBy(Parse *, Select *, ExprList *, const char *);
 void
 sqlite3ColumnDefault(Vdbe *v, struct space_def *def, int i, int ireg);
 
-void sqlite3AlterFinishAddColumn(Parse *, Token *);
-void sqlite3AlterBeginAddColumn(Parse *, SrcList *);
 char* rename_table(sqlite3 *, const char *, const char *, bool *);
 char* rename_parent_table(sqlite3 *, const char *, const char *, const char *,
 			  uint32_t *, uint32_t *);

@@ -175,11 +175,11 @@ createkw(A) ::= CREATE(A).  {disableLookaside(pParse);}
 ifnotexists(A) ::= .              {A = 0;}
 ifnotexists(A) ::= IF NOT EXISTS. {A = 1;}
 
-create_table_args ::= LP columnlist conslist_opt(X) RP(E). {
-  sqlite3EndTable(pParse,&X,&E,0);
+create_table_args ::= LP columnlist conslist_opt RP(E). {
+  sqlite3EndTable(pParse,&E,0);
 }
 create_table_args ::= AS select(S). {
-  sqlite3EndTable(pParse,0,0,S);
+  sqlite3EndTable(pParse,0,S);
   sql_select_delete(pParse->db, S);
 }
 columnlist ::= columnlist COMMA columnname carglist.
@@ -322,8 +322,8 @@ init_deferred_pred_opt(A) ::= .                       {A = 0;}
 init_deferred_pred_opt(A) ::= INITIALLY DEFERRED.     {A = 1;}
 init_deferred_pred_opt(A) ::= INITIALLY IMMEDIATE.    {A = 0;}
 
-conslist_opt(A) ::= .                         {A.n = 0; A.z = 0;}
-conslist_opt(A) ::= COMMA(A) conslist.
+conslist_opt ::= .
+conslist_opt ::= COMMA conslist.
 conslist ::= conslist tconscomma tcons.
 conslist ::= tcons.
 tconscomma ::= COMMA.            {pParse->constraintName.n = 0;}
@@ -1435,7 +1435,6 @@ cmd ::= ANALYZE.                {sqlite3Analyze(pParse, 0);}
 cmd ::= ANALYZE nm(X).          {sqlite3Analyze(pParse, &X);}
 
 //////////////////////// ALTER TABLE table ... ////////////////////////////////
-%ifndef SQLITE_OMIT_ALTERTABLE
 cmd ::= ALTER TABLE fullname(X) RENAME TO nm(Z). {
   sqlite3AlterRenameTable(pParse,X,&Z);
 }
@@ -1451,7 +1450,6 @@ cmd ::= ALTER TABLE fullname(X) RENAME TO nm(Z). {
 /* } */
 /* kwcolumn_opt ::= . */
 /* kwcolumn_opt ::= COLUMNKW. */
-%endif  SQLITE_OMIT_ALTERTABLE
 
 //////////////////////// COMMON TABLE EXPRESSIONS ////////////////////////////
 %type with {With*}
