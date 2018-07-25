@@ -541,7 +541,6 @@ log_create(struct log *log, const char *init_str, int nonblock)
 	if (init_str != NULL) {
 		enum say_logger_type type;
 		if (say_parse_logger_type(&init_str, &type)) {
-			diag_set(IllegalParams, logger_syntax_reminder);
 			return -1;
 		}
 		int rc;
@@ -989,8 +988,10 @@ say_parse_logger_type(const char **str, enum say_logger_type *type)
 		*type = SAY_LOGGER_SYSLOG;
 	else if (strchr(*str, ':') == NULL)
 		*type = SAY_LOGGER_FILE;
-	else
+	else {
+		diag_set(IllegalParams, logger_syntax_reminder);
 		return -1;
+	}
 	return 0;
 }
 

@@ -51,7 +51,7 @@ invalid('vinyl_bloom_fpr', 1.1)
 
 local function invalid_combinations(name, val)
     local status, result = pcall(box.cfg, val)
-    test:ok(not status and result:match('Illegal'), 'invalid '..name)
+    test:ok(not status and result:match('Incorrect'), 'incompatible values'..name)
 end
 
 invalid_combinations("log, log_nonblock", {log = "1.log", log_nonblock = true})
