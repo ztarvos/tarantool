@@ -1902,7 +1902,6 @@ struct Savepoint {
 struct Table {
 	Index *pIndex;		/* List of SQL indexes on this table. */
 	FKey *pFKey;		/* Linked list of all foreign keys in this table */
-	Hash idxHash;		/* All (named) indices indexed by name */
 	u32 nTabRef;		/* Number of pointers to this Table */
 	i16 iAutoIncPKey;	/* If PK is marked INTEGER PRIMARY KEY AUTOINCREMENT, store
 				   column number here, -1 otherwise Tarantool specifics */
