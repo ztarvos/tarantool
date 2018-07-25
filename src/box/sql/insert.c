@@ -147,36 +147,19 @@ sql_index_affinity_str(struct sqlite3 *db, struct index_def *def)
 void
 sqlite3TableAffinity(Vdbe * v, Table * pTab, int iReg)
 {
-	int i;
-	char *zColAff = pTab->zColAff;
-	if (zColAff == 0) {
-		sqlite3 *db = sqlite3VdbeDb(v);
-		zColAff =
-			(char *)sqlite3DbMallocRaw(0,
-						   pTab->def->field_count + 1);
-		if (!zColAff) {
-			sqlite3OomFault(db);
-			return;
-		}
-
-		for (i = 0; i < (int)pTab->def->field_count; i++) {
-			char affinity = pTab->def->fields[i].affinity;
-			zColAff[i] = affinity;
-		}
-		do {
-			zColAff[i--] = 0;
-		} while (i >= 0 && zColAff[i] == AFFINITY_BLOB);
-		pTab->zColAff = zColAff;
+	assert(iReg > 0);
+	sqlite3 *db = sqlite3VdbeDb(v);
+	uint32_t field_count = pTab->def->field_count;
+	char *zColAff = (char *)sqlite3DbMallocZero(db, field_count + 1);
+	if (zColAff == NULL) {
+		sqlite3OomFault(db);
+		return;
 	}
-	i = sqlite3Strlen30(zColAff);
-	if (i) {
-		if (iReg) {
-			sqlite3VdbeAddOp4(v, OP_Affinity, iReg, i, 0, zColAff,
-					  i);
-		} else {
-			sqlite3VdbeChangeP4(v, -1, zColAff, i);
-		}
-	}
+	memset(zColAff, 0, field_count);
+	for (uint32_t i = 0; i < field_count; ++i)
+		zColAff[i] = pTab->def->fields[i].affinity;
+	sqlite3VdbeAddOp4(v, OP_Affinity, iReg, field_count, 0, zColAff,
+			  P4_DYNAMIC);
 }
 
 /**
@@ -1240,7 +1223,7 @@ sqlite3GenerateConstraintChecks(Parse * pParse,		/* The parser context */
 					pIdx->def->key_def->parts[0].fieldno;
 				reg_pk = regNewData + 1 + fieldno;
 
-				if (pTab->zColAff[fieldno] ==
+				if (pTab->def->fields[fieldno].affinity ==
 				    AFFINITY_INTEGER) {
 					int skip_if_null = sqlite3VdbeMakeLabel(v);
 					if ((pTab->tabFlags & TF_Autoincrement) != 0) {

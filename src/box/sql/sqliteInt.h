@@ -1902,8 +1902,6 @@ struct Savepoint {
 struct Table {
 	Index *pIndex;		/* List of SQL indexes on this table. */
 	FKey *pFKey;		/* Linked list of all foreign keys in this table */
-	char *zColAff;		/* String defining the affinity of each column */
-	/*   ... also used as column name list in a VIEW */
 	Hash idxHash;		/* All (named) indices indexed by name */
 	u32 nTabRef;		/* Number of pointers to this Table */
 	i16 iAutoIncPKey;	/* If PK is marked INTEGER PRIMARY KEY AUTOINCREMENT, store
