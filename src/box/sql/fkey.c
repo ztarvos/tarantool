@@ -465,8 +465,9 @@ fkLookupParent(Parse * pParse,	/* Parse context */
 
 			sqlite3VdbeAddOp4(v, OP_MakeRecord, regTemp, nCol,
 					  regRec,
-					  sqlite3IndexAffinityStr(pParse->db,
-								  pIdx), nCol);
+					  sql_index_affinity_str(pParse->db,
+								  pIdx->def),
+					  nCol);
 			sqlite3VdbeAddOp4Int(v, OP_Found, iCur, iOk, regRec, 0);
 			VdbeCoverage(v);
 

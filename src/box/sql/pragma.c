@@ -758,9 +758,9 @@ sqlite3Pragma(Parse * pParse, Token * pId,	/* First part of [schema.]id field */
 									  pFK->
 									  nCol,
 									  regKey,
-									  sqlite3IndexAffinityStr
+									  sql_index_affinity_str
 									  (db,
-									   pIdx),
+									   pIdx->def),
 									  pFK->
 									  nCol);
 							sqlite3VdbeAddOp4Int(v,
