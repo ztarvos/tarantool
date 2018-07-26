@@ -241,8 +241,7 @@ sqlite3FkLocateIndex(Parse * pParse,	/* Parse context to store any error in */
 	struct Index *index = NULL;
 	for (index = pParent->pIndex; index != NULL; index = index->pNext) {
 		int part_count = index->def->key_def->part_count;
-		if (part_count != nCol || !index->def->opts.is_unique ||
-		    index->pPartIdxWhere != NULL)
+		if (part_count != nCol || !index->def->opts.is_unique)
 			continue;
 		/*
 		 * Index is a UNIQUE index (or a PRIMARY KEY) and
