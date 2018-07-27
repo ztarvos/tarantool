@@ -82,10 +82,22 @@ struct relay_gc_msg {
 	struct vclock vclock;
 };
 
+/**
+ * Cbus message sent by tx thread to stop relay on shutdown.
+ */
+struct relay_halt_msg {
+	/** Parent. */
+	struct cmsg msg;
+	/** Relay instance. */
+	struct relay *relay;
+};
+
 /** State of a replication relay. */
 struct relay {
 	/** The thread in which we relay data to the replica. */
 	struct cord cord;
+	/** The main fiber in cord to be canceled upon relay halt. */
+	struct fiber *main_fiber;
 	/** Replica connection */
 	struct ev_io io;
 	/** Request sync */
@@ -120,6 +132,11 @@ struct relay {
 	struct cpipe tx_pipe;
 	/** A pipe from 'tx' thread to 'relay' */
 	struct cpipe relay_pipe;
+	/**
+	 * A flag indicating that we executed relay_subscribe_f and
+	 * have tx_pipe and relay_pipe ready.
+	 */
+	bool tx_in_use;
 	/** Status message */
 	struct relay_status_msg status_msg;
 	/**
@@ -150,6 +167,12 @@ enum relay_state
 relay_get_state(const struct relay *relay)
 {
 	return relay->state;
+}
+
+bool
+relay_uses_tx(const struct relay *relay)
+{
+	return relay->tx_in_use;
 }
 
 const struct vclock *
@@ -196,6 +219,40 @@ relay_start(struct relay *relay, int fd, uint64_t sync,
 	coio_create(&relay->io, fd);
 	relay->sync = sync;
 	relay->state = RELAY_FOLLOW;
+}
+
+static void
+relay_main_fiber_halt(struct cmsg *msg)
+{
+	struct relay_halt_msg *m = (struct relay_halt_msg *)msg;
+	struct relay *relay = m->relay;
+
+	assert(relay->main_fiber != NULL);
+	fiber_cancel(relay->main_fiber);
+	relay->main_fiber = NULL;
+
+	free(m);
+}
+
+void
+relay_halt(struct relay *relay)
+{
+	assert(relay->state == RELAY_FOLLOW);
+
+	static const struct cmsg_hop route[] ={
+		{relay_main_fiber_halt, NULL}
+	};
+	struct relay_halt_msg *m = (struct relay_halt_msg *)malloc(sizeof(*m));
+	if (m == NULL) {
+		/*
+		 * Out of memory during shutdown. Do nothing.
+		 */
+		say_warn("failed to allocate relay halt message");
+		return;
+	}
+	cmsg_init(&m->msg, route);
+	m->relay = relay;
+	cpipe_push(&relay->relay_pipe, &m->msg);
 }
 
 static void
@@ -468,6 +525,8 @@ relay_subscribe_f(va_list ap)
 			     fiber_schedule_cb, fiber());
 	cbus_pair("tx", cord_name(cord()), &relay->tx_pipe, &relay->relay_pipe,
 		  NULL, NULL, cbus_process);
+	relay->main_fiber = fiber();
+	relay->tx_in_use =  true;
 	/* Setup garbage collection trigger. */
 	struct trigger on_close_log = {
 		RLIST_LINK_INITIALIZER, relay_on_close_log_f, relay, NULL
@@ -545,6 +604,7 @@ relay_subscribe_f(va_list ap)
 	cbus_unpair(&relay->tx_pipe, &relay->relay_pipe,
 		    NULL, NULL, cbus_process);
 	cbus_endpoint_destroy(&relay->endpoint, cbus_process);
+	relay->tx_in_use = false;
 	if (!diag_is_empty(&relay->diag)) {
 		/* An error has occurred while reading ACKs of xlog. */
 		diag_move(&relay->diag, diag_get());

@@ -333,6 +333,12 @@ replica_on_relay_stop(struct replica *replica);
 void
 replica_check_id(uint32_t replica_id);
 
+/*
+ * Stop replication and delete all replicas and replicaset.
+ */
+void
+replication_shutdown();
+
 /**
  * Register the universally unique identifier of a remote replica and
  * a matching replica-set-local identifier in the  _cluster registry.

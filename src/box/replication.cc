@@ -398,6 +398,36 @@ replica_on_applier_state_f(struct trigger *trigger, void *event)
 	fiber_cond_signal(&replicaset.applier.cond);
 }
 
+void
+replication_shutdown()
+{
+	struct replica *replica, *next;
+
+	replica_hash_foreach_safe(&replicaset.hash, replica, next) {
+		if (replica->id == instance_id)
+			continue;
+		if (replica->applier != NULL) {
+			replica_clear_applier(replica);
+			/*
+			 * We're exiting, so control won't be passed
+			 * to appliers and we don't need to stop them.
+			 */
+		}
+		if (replica->id != REPLICA_ID_NIL) {
+			if (relay_get_state(replica->relay) == RELAY_FOLLOW &&
+			    relay_uses_tx(replica->relay)) {
+				replica->id = REPLICA_ID_NIL;
+				relay_halt(replica->relay);
+			}
+		} else {
+			replica_hash_remove(&replicaset.hash, replica);
+			replica_delete(replica);
+		}
+	}
+
+	replication_free();
+}
+
 /**
  * Update the replica set with new "applier" objects
  * upon reconfiguration of box.cfg.replication.

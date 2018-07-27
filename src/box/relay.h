@@ -61,6 +61,10 @@ enum relay_state {
 struct relay *
 relay_new(struct replica *replica);
 
+/** Stop a running relay.. Called on shutdown. */
+void
+relay_halt(struct relay *relay);
+
 /** Destroy and delete the relay */
 void
 relay_delete(struct relay *relay);
@@ -73,6 +77,12 @@ relay_get_diag(struct relay *relay);
 enum relay_state
 relay_get_state(const struct relay *relay);
 
+/**
+ * Return whether relay_subscribe_f was already started
+ * and pipes between tx and relay were created.
+ */
+bool
+relay_uses_tx(const struct relay *relay);
 /**
  * Returns relay's vclock
  * @param relay relay

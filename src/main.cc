@@ -76,6 +76,7 @@
 #include "box/lua/init.h" /* box_lua_init() */
 #include "box/session.h"
 #include "systemd.h"
+#include "box/replication.h" /* replication_shutdown() */
 
 static pid_t master_pid = getpid();
 static struct pidfh *pid_file_handle;

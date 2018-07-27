@@ -1597,9 +1597,9 @@ box_free(void)
 	 * initialized
 	 */
 	if (is_box_configured) {
+	        replication_shutdown();
 #if 0
 		session_free();
-		replication_free();
 		user_cache_free();
 		schema_free();
 		module_free();
