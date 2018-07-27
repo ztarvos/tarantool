@@ -256,7 +256,7 @@ sqlite3FkLocateIndex(Parse * pParse,	/* Parse context to store any error in */
 			 * of table pParent. The PRIMARY KEY index
 			 * may be identified by the test.
 			 */
-			if (IsPrimaryKeyIndex(index)) {
+			if (sql_index_is_primary(index)) {
 				if (aiCol != NULL) {
 					for (int i = 0; i < nCol; i++)
 						aiCol[i] = pFKey->aCol[i].iFrom;
