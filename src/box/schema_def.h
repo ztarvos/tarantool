@@ -223,12 +223,18 @@ enum schema_object_type {
 	SC_UNKNOWN = 0,
 	SC_UNIVERSE = 1,
 	SC_SPACE = 2,
-	SC_FUNCTION = 3,
-	SC_USER = 4,
-	SC_ROLE = 5,
-	SC_SEQUENCE = 6,
-	SC_COLLATION = 7,
-	schema_object_type_MAX = 8
+	SC_ENTITY_SPACE = 3,
+	SC_FUNCTION = 4,
+	SC_ENTITY_FUNCTION = 5,
+	SC_USER = 6,
+	SC_ENTITY_USER = 7,
+	SC_ROLE = 8,
+	SC_ENTITY_ROLE = 9,
+	SC_SEQUENCE = 10,
+	SC_ENTITY_SEQUENCE = 11,
+	SC_COLLATION = 12,
+	SC_ENTITY_COLLATION = 13,
+	schema_object_type_MAX = 13
 };
 
 enum schema_object_type

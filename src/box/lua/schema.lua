@@ -1731,14 +1731,21 @@ local priv_object_combo = {
     ["universe"] = box.priv.ALL,
 -- sic: we allow to grant 'execute' on space. This is a legacy
 -- bug, please fix it in 2.0
-    ["space"]    = bit.bxor(box.priv.ALL, box.priv.S,
-                            box.priv.REVOKE, box.priv.GRANT),
-    ["sequence"] = bit.bor(box.priv.R, box.priv.W, box.priv.U,
-                           box.priv.C, box.priv.A, box.priv.D),
-    ["function"] = bit.bor(box.priv.X, box.priv.U,
-                           box.priv.C, box.priv.D),
-    ["role"]     = bit.bor(box.priv.X, box.priv.U,
-                           box.priv.C, box.priv.D),
+    ["space"]        = bit.bxor(box.priv.ALL, box.priv.S, box.priv.C,
+                                box.priv.REVOKE, box.priv.GRANT),
+    ["all spaces"]    = bit.bxor(box.priv.ALL, box.priv.S,
+                                box.priv.REVOKE, box.priv.GRANT),
+    ["sequence"]     = bit.bor(box.priv.R, box.priv.W, box.priv.U,
+                               box.priv.A, box.priv.D),
+    ["all sequences"] = bit.bor(box.priv.R, box.priv.W,
+                               box.priv.C, box.priv.A, box.priv.D),
+    ["function"]     = bit.bor(box.priv.X, box.priv.U,
+                               box.priv.D),
+    ["all functions"] = bit.bor(box.priv.X,
+                               box.priv.C, box.priv.D),
+    ["role"]         = bit.bor(box.priv.X, box.priv.U,
+                               box.priv.D),
+    ["all roles"]     = bit.bor(box.priv.C, box.priv.D),
 }
 
 --
@@ -1808,10 +1815,34 @@ local function object_resolve(object_type, object_name)
         end
         return 0
     end
-    if object_type == 'space' then
-        if object_name == nil or object_name == 0 then
-            return 0
+    if object_type == 'all spaces' then
+        if object_name ~= nil and object_name ~= 0 then
+            box.error(box.error.ILLEGAL_PARAMS, "no object name allowed")
         end
+        return 0
+    end
+    if object_type == 'all sequences' then
+        if object_name ~= nil and object_name ~= 0 then
+            box.error(box.error.ILLEGAL_PARAMS, "no object name allowed")
+        end
+        return 0
+    end
+    if object_type == 'all functions' then
+        if object_name ~= nil and object_name ~= 0 then
+            box.error(box.error.ILLEGAL_PARAMS, "no object name allowed")
+        end
+        return 0
+    end
+    if object_type == 'all roles' then
+        if object_name ~= nil and object_name ~= 0 then
+            box.error(box.error.ILLEGAL_PARAMS, "no object name allowed")
+        end
+        return 0
+    end
+    if object_type == 'space' then
+	if object_name == nil then
+	    return nil
+	end
         local space = box.space[object_name]
         if  space == nil then
             box.error(box.error.NO_SUCH_SPACE, object_name)
@@ -1819,9 +1850,9 @@ local function object_resolve(object_type, object_name)
         return space.id
     end
     if object_type == 'function' then
-        if object_name == nil or object_name == 0 then
-            return 0
-        end
+	if object_name == nil then
+	    return nil
+	end
         local _vfunc = box.space[box.schema.VFUNC_ID]
         local func
         if type(object_name) == 'string' then
@@ -1836,16 +1867,19 @@ local function object_resolve(object_type, object_name)
         end
     end
     if object_type == 'sequence' then
-        if object_name == nil or object_name == 0 then
-            return 0
-        end
-        local seq = sequence_resolve(object_name)
+        if object_name == nil then
+	    return nil
+	end
+	local seq = sequence_resolve(object_name)
         if seq == nil then
             box.error(box.error.NO_SUCH_SEQUENCE, object_name)
         end
         return seq
     end
     if object_type == 'role' then
+	if object_name == nil then
+	    return nil
+	end
         local _vuser = box.space[box.schema.VUSER_ID]
         local role
         if type(object_name) == 'string' then
@@ -1864,7 +1898,9 @@ local function object_resolve(object_type, object_name)
 end
 
 local function object_name(object_type, object_id)
-    if object_type == 'universe' then
+    if object_type == 'universe' or object_type == 'all spaces' or
+        object_type == 'all sequences' or object_type == 'all functions' or
+        object_type == 'all roles' or object_type == 'all users' then
         return ""
     end
     local space
@@ -2079,9 +2115,14 @@ local function grant(uid, name, privilege, object_type,
         object_name = privilege
         privilege = 'execute'
     end
-    local privilege_hex = privilege_check(privilege, object_type)
 
     local oid = object_resolve(object_type, object_name)
+    -- allow for old syntax to grant privileges on an entity
+    if oid == nil then
+	oid = 0
+	object_type = 'all ' .. object_type .. 's'
+    end
+    local privilege_hex = privilege_check(privilege, object_type)
     options = options or {}
     if options.grantor == nil then
         options.grantor = session.euid()
@@ -2122,9 +2163,13 @@ local function revoke(uid, name, privilege, object_type, object_name, options)
         object_name = privilege
         privilege = 'execute'
     end
-    local privilege_hex = privilege_check(privilege, object_type)
     options = options or {}
     local oid = object_resolve(object_type, object_name)
+    if oid == nil then
+	oid = 0
+	object_type = 'all ' .. object_type .. 's'
+    end
+    local privilege_hex = privilege_check(privilege, object_type)
     local _priv = box.space[box.schema.PRIV_ID]
     local _vpriv = box.space[box.schema.VPRIV_ID]
     local tuple = _vpriv:get{uid, object_type, oid}

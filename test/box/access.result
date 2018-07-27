@@ -1733,19 +1733,19 @@ box.session.su('admin')
 -- prerequisite gh-945
 box.schema.user.grant("guest", "alter", "function")
 ---
-- error: Unsupported function privilege 'alter'
+- error: Unsupported all functions privilege 'alter'
 ...
 box.schema.user.grant("guest", "execute", "sequence")
 ---
-- error: Unsupported sequence privilege 'execute'
+- error: Unsupported all sequences privilege 'execute'
 ...
 box.schema.user.grant("guest", "read,execute", "sequence")
 ---
-- error: Unsupported sequence privilege 'read,execute'
+- error: Unsupported all sequences privilege 'read,execute'
 ...
 box.schema.user.grant("guest", "read,write,execute", "role")
 ---
-- error: Unsupported role privilege 'read,write,execute'
+- error: Unsupported all roles privilege 'read,write,execute'
 ...
 -- Check entities DML
 box.schema.user.create("tester", { password  = '123' })

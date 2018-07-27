@@ -31,14 +31,20 @@
 #include "schema_def.h"
 
 static const char *object_type_strs[] = {
-	/* [SC_UKNNOWN]         = */ "unknown",
-	/* [SC_UNIVERSE]        = */ "universe",
-	/* [SC_SPACE]           = */ "space",
-	/* [SC_FUNCTION]        = */ "function",
-	/* [SC_USER]            = */ "user",
-	/* [SC_ROLE]            = */ "role",
-	/* [SC_SEQUENCE]        = */ "sequence",
-	/* [SC_COLLATION]       = */ "collation",
+	/* [SC_UKNNOWN]		    = */ "unknown",
+	/* [SC_UNIVERSE]	    = */ "universe",
+	/* [SC_SPACE]		    = */ "space",
+	/* [SC_ENTITY_SPACE]	    = */ "all spaces",
+	/* [SC_FUNCTION]	    = */ "function",
+	/* [SC_ENTITY_FUNCTION]	    = */ "all functions",
+	/* [SC_USER]		    = */ "user",
+	/* [SC_ENTITY_USER]	    = */ "all users",
+	/* [SC_ROLE]		    = */ "role",
+	/* [SC_ENTITY_ROLE]	    = */ "all roles",
+	/* [SC_SEQUENCE]	    = */ "sequence",
+	/* [SC_ENTITY_SEQUENCE]	    = */ "all sequences",
+	/* [SC_COLLATION]	    = */ "collation",
+	/* [SC_ENTITY_COLLATION]    = */ "all collations",
 };
 
 enum schema_object_type

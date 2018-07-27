@@ -536,10 +536,18 @@ schema_find_name(enum schema_object_type type, uint32_t object_id)
 	switch (type) {
 	case SC_UNIVERSE:
 		return "";
+	case SC_ENTITY_SPACE:
+		return "SPACE";
+	case SC_ENTITY_FUNCTION:
+		return "FUNCTION";
+	case SC_ENTITY_SEQUENCE:
+		return "SEQUENCE";
+	case SC_ENTITY_ROLE:
+		return "ROLE";
+	case SC_ENTITY_USER:
+		return "USER";
 	case SC_SPACE:
 		{
-			if (object_id == 0)
-				return "SPACE";
 			struct space *space = space_by_id(object_id);
 			if (space == NULL)
 				break;
@@ -547,8 +555,6 @@ schema_find_name(enum schema_object_type type, uint32_t object_id)
 		}
 	case SC_FUNCTION:
 		{
-			if (object_id == 0)
-				return "FUNCTION";
 			struct func *func = func_by_id(object_id);
 			if (func == NULL)
 				break;
@@ -556,8 +562,6 @@ schema_find_name(enum schema_object_type type, uint32_t object_id)
 		}
 	case SC_SEQUENCE:
 		{
-			if (object_id == 0)
-				return "SEQUENCE";
 			struct sequence *seq = sequence_by_id(object_id);
 			if (seq == NULL)
 				break;
