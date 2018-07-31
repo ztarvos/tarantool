@@ -37,6 +37,7 @@
 #include "sqliteInt.h"
 #include "vdbeInt.h"
 #include "version.h"
+#include "src/box/session.h"
 #include <unicode/ustring.h>
 #include <unicode/ucasemap.h>
 #include <unicode/ucnv.h>
@@ -588,6 +589,16 @@ changes(sqlite3_context * context, int NotUsed, sqlite3_value ** NotUsed2)
 	sqlite3 *db = sqlite3_context_db_handle(context);
 	UNUSED_PARAMETER2(NotUsed, NotUsed2);
 	sqlite3_result_int(context, sqlite3_changes(db));
+}
+
+/*
+ */
+static void
+last_insert_id(sqlite3_context *context, int not_used,
+	       sqlite3_value **not_used2)
+{
+	UNUSED_PARAMETER2(not_used, not_used2);
+	sqlite3_result_int(context, get_last_insert_id());
 }
 
 /*
@@ -1839,6 +1850,7 @@ sqlite3RegisterBuiltinFunctions(void)
 		FUNCTION(lower, 1, 0, 0, LowerICUFunc),
 		FUNCTION(hex, 1, 0, 0, hexFunc),
 		FUNCTION2(ifnull, 2, 0, 0, noopFunc, SQLITE_FUNC_COALESCE),
+		VFUNCTION(last_insert_id, 0, 0, 0, last_insert_id),
 		VFUNCTION(random, 0, 0, 0, randomFunc),
 		VFUNCTION(randomblob, 1, 0, 0, randomBlob),
 		FUNCTION(nullif, 2, 0, 1, nullifFunc),

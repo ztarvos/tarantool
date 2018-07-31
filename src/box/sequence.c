@@ -340,3 +340,16 @@ sequence_data_iterator_create(void)
 	light_sequence_iterator_freeze(&sequence_data_index, &iter->iter);
 	return &iter->base;
 }
+
+int64_t
+sequence_get_value(struct sequence *seq)
+{
+	uint32_t key = seq->def->id;
+	uint32_t hash = sequence_hash(key);
+	uint32_t pos = light_sequence_find_key(&sequence_data_index, hash, key);
+	if (pos == light_sequence_end)
+		return 0;
+	struct sequence_data data = light_sequence_get(&sequence_data_index,
+						       pos);
+	return data.value;
+}

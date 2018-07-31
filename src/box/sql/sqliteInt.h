@@ -4863,4 +4863,16 @@ void
 vdbe_emit_stat_space_clear(struct Parse *parse, const char *stat_table_name,
 			   const char *idx_name, const char *table_name);
 
+/**
+ * Set last_insert_id of current session as ID of first inserted
+ * tuple in last INSERT query executed in current session.
+ *
+ * @param space space to get sequence from.
+ */
+void
+set_last_insert_id(struct space *space);
+
+int64_t
+get_last_insert_id(void);
+
 #endif				/* SQLITEINT_H */

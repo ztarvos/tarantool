@@ -48,6 +48,7 @@
 #include "txn.h"
 #include "space.h"
 #include "space_def.h"
+#include "sequence.h"
 #include "index_def.h"
 #include "tuple.h"
 #include "fiber.h"
@@ -1793,4 +1794,20 @@ sql_checks_resolve_space_def_reference(ExprList *expr_list,
 	}
 	sql_parser_destroy(&parser);
 	return rc;
+}
+
+void
+set_last_insert_id(struct space *space)
+{
+	struct session *session = current_session();
+	session->last_insert_id = 0;
+	struct sequence *sequence = space->sequence;
+	if(sequence != NULL)
+		session->last_insert_id = sequence_get_value(sequence);
+}
+
+int64_t
+get_last_insert_id(void)
+{
+	return current_session()->last_insert_id;
 }

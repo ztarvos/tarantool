@@ -599,6 +599,7 @@ int sqlite3VdbeExec(Vdbe *p)
 	u64 start;                 /* CPU clock count at start of opcode */
 #endif
 	struct session *user_session = current_session();
+	bool last_insert_id_is_set = false;
 	/*** INSERT STACK UNION HERE ***/
 
 	assert(p->magic==VDBE_MAGIC_RUN);  /* sqlite3_step() verifies this */
@@ -4335,14 +4336,19 @@ case OP_IdxInsert: {        /* in2 */
 		if (pBtCur->curFlags & BTCF_TaCursor) {
 			/* Make sure that memory has been allocated on region. */
 			assert(aMem[pOp->p2].flags & MEM_Ephem);
-			if (pOp->opcode == OP_IdxInsert)
+			if (pOp->opcode == OP_IdxInsert) {
 				rc = tarantoolSqlite3Insert(pBtCur->space,
 							    pIn2->z,
 							    pIn2->z + pIn2->n);
-			else
+				if (rc == 0 && !last_insert_id_is_set) {
+					set_last_insert_id(pBtCur->space);
+					last_insert_id_is_set = true;
+				}
+			} else {
 				rc = tarantoolSqlite3Replace(pBtCur->space,
 							     pIn2->z,
 							     pIn2->z + pIn2->n);
+			}
 		} else if (pBtCur->curFlags & BTCF_TEphemCursor) {
 			rc = tarantoolSqlite3EphemeralInsert(pBtCur->space,
 							     pIn2->z,

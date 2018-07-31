@@ -58,6 +58,7 @@ lbox_session_create(struct lua_State *L)
 	}
 	/* If a session already exists, simply reset its type */
 	session->type = STR2ENUM(session_type, luaL_optstring(L, 2, "console"));
+	session->last_insert_id = 0;
 
 	lua_pushnumber(L, session->id);
 	return 1;

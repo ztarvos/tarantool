@@ -149,6 +149,15 @@ access_check_sequence(struct sequence *seq);
 struct snapshot_iterator *
 sequence_data_iterator_create(void);
 
+/**
+ * Get current value of given sequence.
+ *
+ * @param seq sequence to get value from.
+ * @retval current value of sequence.
+ */
+int64_t
+sequence_get_value(struct sequence *seq);
+
 #if defined(__cplusplus)
 } /* extern "C" */
 #endif /* defined(__cplusplus) */

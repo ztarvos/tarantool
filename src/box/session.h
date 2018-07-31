@@ -103,6 +103,8 @@ struct session {
 	struct credentials credentials;
 	/** Trigger for fiber on_stop to cleanup created on-demand session */
 	struct trigger fiber_on_stop;
+	/** ID of first inserted tuple in last SQL INSERT query */
+	int64_t last_insert_id;
 };
 
 struct session_vtab {
