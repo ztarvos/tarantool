@@ -1844,3 +1844,184 @@ s.index.sk:stat().memory.rows
 s:drop()
 ---
 ...
+--
+-- gh-3458: the write set of a transaction started before DDL and
+-- committed during DDL is taken into account by space format check
+-- and index build.
+--
+fiber = require('fiber')
+---
+...
+errinj = box.error.injection
+---
+...
+vinyl_cache = box.cfg.vinyl_cache
+---
+...
+box.cfg{vinyl_cache = 0}
+---
+...
+s = box.schema.space.create('test', {engine = 'vinyl'})
+---
+...
+_ = s:create_index('pk', {page_size = 16})
+---
+...
+pad = string.rep('x', 16)
+---
+...
+for i = 101, 200 do s:replace{i, i, pad} end
+---
+...
+box.snapshot()
+---
+- ok
+...
+ch = fiber.channel(1)
+---
+...
+test_run:cmd("setopt delimiter ';'")
+---
+- true
+...
+function async_replace(tuple, timeout)
+    fiber.create(function()
+        box.begin()
+        s:replace(tuple)
+        fiber.sleep(timeout)
+        local status = pcall(box.commit)
+        ch:put(status)
+    end)
+end;
+---
+...
+test_run:cmd("setopt delimiter ''");
+---
+- true
+...
+async_replace({1}, 0.01)
+---
+...
+errinj.set("ERRINJ_VY_READ_PAGE_TIMEOUT", 0.001)
+---
+- ok
+...
+s:format{{'key', 'unsigned'}, {'value', 'unsigned'}} -- must fail
+---
+- error: Tuple field count 1 is less than required by space format or defined indexes
+    (expected at least 2)
+...
+errinj.set("ERRINJ_VY_READ_PAGE_TIMEOUT", 0)
+---
+- ok
+...
+ch:get()
+---
+- true
+...
+s:get{1} ~= nil
+---
+- true
+...
+s:delete{1}
+---
+...
+s:format{}
+---
+...
+async_replace({1, 1}, 0.01)
+---
+...
+errinj.set("ERRINJ_VY_READ_PAGE_TIMEOUT", 0.001)
+---
+- ok
+...
+_ = s:create_index('sk', {parts = {2, 'unsigned'}})
+---
+...
+errinj.set("ERRINJ_VY_READ_PAGE_TIMEOUT", 0)
+---
+- ok
+...
+ch:get()
+---
+- true
+...
+s:get{1} ~= nil
+---
+- true
+...
+s.index.pk:count() == s.index.sk:count()
+---
+- true
+...
+s.index.sk:drop()
+---
+...
+-- Transactions that failed to complete within timeout are aborted.
+vinyl_timeout = box.cfg.vinyl_timeout
+---
+...
+box.cfg{vinyl_timeout = 0.001}
+---
+...
+async_replace({2}, 0.01)
+---
+...
+errinj.set("ERRINJ_VY_READ_PAGE_TIMEOUT", 0.001)
+---
+- ok
+...
+s:format{{'key', 'unsigned'}, {'value', 'unsigned'}}
+---
+...
+errinj.set("ERRINJ_VY_READ_PAGE_TIMEOUT", 0)
+---
+- ok
+...
+ch:get()
+---
+- false
+...
+s:get{2} == nil
+---
+- true
+...
+s:format{}
+---
+...
+s:truncate()
+---
+...
+-- Transactions that reached WAL are never aborted.
+errinj.set('ERRINJ_WAL_DELAY', true)
+---
+- ok
+...
+_ = fiber.create(function() s:replace{1} end)
+---
+...
+_ = fiber.create(function() fiber.sleep(0.01) errinj.set('ERRINJ_WAL_DELAY', false) end)
+---
+...
+fiber.sleep(0)
+---
+...
+s:format{{'key', 'unsigned'}, {'value', 'unsigned'}} -- must fail
+---
+- error: Tuple field count 1 is less than required by space format or defined indexes
+    (expected at least 2)
+...
+s:select()
+---
+- - [1]
+...
+s:drop()
+---
+...
+box.cfg{vinyl_timeout = vinyl_timeout}
+---
+...
+box.cfg{vinyl_cache = vinyl_cache}
+---
+...

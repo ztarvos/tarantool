@@ -1084,9 +1084,16 @@ vinyl_space_check_format(struct space *space, struct tuple_format *format)
 	trigger_create(&on_replace, vy_check_format_on_replace, &ctx, NULL);
 	trigger_add(&space->on_replace, &on_replace);
 
+	/*
+	 * Wait for all transactions that began before we installed
+	 * the on_replace trigger so that we don't miss their write
+	 * set while checking the space format.
+	 */
+	tx_manager_flush(env->xm, env->timeout);
+
 	struct vy_read_iterator itr;
 	vy_read_iterator_open(&itr, pk, NULL, ITER_ALL, key,
-			      &env->xm->p_global_read_view);
+			      &env->xm->p_committed_read_view);
 	int rc;
 	int loops = 0;
 	struct tuple *tuple;
@@ -4158,10 +4165,8 @@ vinyl_space_build_index(struct space *src_space, struct index *new_index,
 {
 	struct vy_env *env = vy_env(src_space->engine);
 	struct vy_lsm *pk = vy_lsm(src_space->index[0]);
-	bool is_empty = (pk->stat.disk.count.rows == 0 &&
-			 pk->stat.memory.count.rows == 0);
 
-	if (new_index->def->iid == 0 && !is_empty) {
+	if (new_index->def->iid == 0 && !vy_lsm_is_empty(pk)) {
 		diag_set(ClientError, ER_UNSUPPORTED, "Vinyl",
 			 "rebuilding the primary index of a non-empty space");
 		return -1;
@@ -4177,9 +4182,6 @@ vinyl_space_build_index(struct space *src_space, struct index *new_index,
 	if (env->status == VINYL_INITIAL_RECOVERY_LOCAL ||
 	    env->status == VINYL_FINAL_RECOVERY_LOCAL)
 		return vy_build_recover(env, new_lsm, pk);
-
-	if (is_empty)
-		return 0;
 
 	/*
 	 * Iterate over all tuples stored in the space and insert
@@ -4202,6 +4204,13 @@ vinyl_space_build_index(struct space *src_space, struct index *new_index,
 	diag_create(&ctx.diag);
 	trigger_create(&on_replace, vy_build_on_replace, &ctx, NULL);
 	trigger_add(&src_space->on_replace, &on_replace);
+
+	/*
+	 * Wait for all transactions that began before we installed
+	 * the on_replace trigger so that we don't miss their write
+	 * set while building the new index.
+	 */
+	tx_manager_flush(env->xm, env->timeout);
 
 	struct vy_read_iterator itr;
 	vy_read_iterator_open(&itr, pk, NULL, ITER_ALL, key,
@@ -4253,9 +4262,10 @@ vinyl_space_build_index(struct space *src_space, struct index *new_index,
 
 	/*
 	 * Dump the new index upon build completion so that we don't
-	 * have to rebuild it on recovery.
+	 * have to rebuild it on recovery. No need to trigger dump if
+	 * the space happens to be empty.
 	 */
-	if (rc == 0)
+	if (rc == 0 && !vy_lsm_is_empty(new_lsm))
 		rc = vy_scheduler_dump(&env->scheduler);
 
 	if (rc == 0 && ctx.is_failed) {

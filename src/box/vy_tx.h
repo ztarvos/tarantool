@@ -39,6 +39,7 @@
 #include <small/rb.h>
 #include <small/rlist.h>
 
+#include "fiber_cond.h"
 #include "iterator_type.h"
 #include "salad/stailq.h"
 #include "trivia/util.h"
@@ -136,6 +137,14 @@ struct vy_tx {
 	/** Transaction manager. */
 	struct tx_manager *xm;
 	/**
+	 * Unique, monotonically growing identifier assigned
+	 * to a transaction when it performs its first write
+	 * operation. See also tx_manager::last_write_id.
+	 */
+	int64_t write_id;
+	/** Link in tx_manager::write_list. */
+	struct rlist in_write_list;
+	/**
 	 * In memory transaction log. Contains both reads
 	 * and writes.
 	 */
@@ -209,6 +218,19 @@ struct tx_manager {
 	 */
 	struct vy_tx *last_prepared_tx;
 	/**
+	 * Write identifier assigned to the most recent read-write
+	 * transaction. See also vy_tx::write_id.
+	 */
+	int64_t last_write_id;
+	/**
+	 * List of all transactions that have non-empty write list
+	 * and may actually commit (i.e. haven't been sent to read
+	 * view or aborted). Newer transactions (with greater write
+	 * identifiers) are closer to the tail of the list.
+	 * Linked by vy_tx::in_write_list.
+	 */
+	struct rlist write_list;
+	/**
 	 * The list of TXs with a read view in order of vlsn.
 	 */
 	struct rlist read_views;
@@ -238,6 +260,12 @@ struct tx_manager {
 	 * transaction to use in such places.
 	 */
 	const struct vy_read_view *p_committed_read_view;
+	/**
+	 * Condition variable signaled whenever a transaction
+	 * is committed, rolled back, aborted, or sent to read
+	 * view.
+	 */
+	struct fiber_cond cond;
 	/** Transaction statistics. */
 	struct vy_tx_stat stat;
 	/** Sum size of statements pinned by the write set. */
@@ -261,6 +289,14 @@ tx_manager_new(void);
 /** Delete a tx manager object. */
 void
 tx_manager_delete(struct tx_manager *xm);
+
+/**
+ * Wait until all currently active truncactions have been
+ * committed or rolled back. Abort transactions that have
+ * not completed within the specified timeout.
+ */
+void
+tx_manager_flush(struct tx_manager *xm, double timeout);
 
 /** Initialize a tx object. */
 void

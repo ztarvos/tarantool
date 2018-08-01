@@ -42,6 +42,7 @@
 #include "diag.h"
 #include "errcode.h"
 #include "fiber.h"
+#include "fiber_cond.h"
 #include "iproto_constants.h"
 #include "iterator_type.h"
 #include "salad/stailq.h"
@@ -106,6 +107,7 @@ tx_manager_new(void)
 		return NULL;
 	}
 
+	rlist_create(&xm->write_list);
 	rlist_create(&xm->read_views);
 	vy_global_read_view_create((struct vy_read_view *)&xm->global_read_view,
 				   INT64_MAX);
@@ -121,6 +123,8 @@ tx_manager_new(void)
 		       sizeof(struct vy_read_interval));
 	mempool_create(&xm->read_view_mempool, slab_cache,
 		       sizeof(struct vy_read_view));
+
+	fiber_cond_create(&xm->cond);
 	return xm;
 }
 
@@ -132,6 +136,59 @@ tx_manager_delete(struct tx_manager *xm)
 	mempool_destroy(&xm->txv_mempool);
 	mempool_destroy(&xm->tx_mempool);
 	free(xm);
+}
+
+/**
+ * Wait until all transactions with the write identifier equal
+ * to the given one or older are completed or the timeout occurs.
+ */
+static int
+tx_manager_wait_write(struct tx_manager *xm,
+		      int64_t write_id, double timeout)
+{
+	double deadline = ev_monotonic_now(loop()) + timeout;
+	do {
+		if (rlist_empty(&xm->write_list))
+			return 0;
+		struct vy_tx *tx = rlist_first_entry(&xm->write_list,
+					struct vy_tx, in_write_list);
+		if (tx->write_id > write_id)
+			return 0;
+	} while (fiber_cond_wait_deadline(&xm->cond, deadline) == 0);
+	return -1;
+}
+
+void
+tx_manager_flush(struct tx_manager *xm, double timeout)
+{
+	/*
+	 * Wait for transactions started before this point
+	 * to complete within the specified timeout.
+	 */
+	int64_t write_id = xm->last_write_id;
+	if (tx_manager_wait_write(xm, write_id, timeout) == 0)
+		return; /* all transactions have completed */
+
+	/*
+	 * Abort transactions that failed to complete within
+	 * the specified timeout. Note, transactions that have
+	 * been submitted to WAL can't be aborted.
+	 */
+	struct vy_tx *tx, *next_tx;
+	rlist_foreach_entry_safe(tx, &xm->write_list, in_write_list, next_tx) {
+		if (tx->write_id > write_id)
+			break;
+		if (tx->state == VINYL_TX_COMMIT)
+			continue;
+		assert(tx->state == VINYL_TX_READY);
+		tx->state = VINYL_TX_ABORT;
+		rlist_del_entry(tx, in_write_list);
+	}
+	fiber_cond_broadcast(&xm->cond);
+
+	/* Wait for transactions awaiting WAL write. */
+	if (tx_manager_wait_write(xm, write_id, TIMEOUT_INFINITY) != 0)
+		unreachable();
 }
 
 /** Create or reuse an instance of a read view. */
@@ -288,11 +345,15 @@ vy_tx_create(struct tx_manager *xm, struct vy_tx *tx)
 	vy_tx_read_set_new(&tx->read_set);
 	tx->psn = 0;
 	rlist_create(&tx->on_destroy);
+	tx->write_id = -1;
+	rlist_create(&tx->in_write_list);
 }
 
 void
 vy_tx_destroy(struct vy_tx *tx)
 {
+	assert(rlist_empty(&tx->in_write_list));
+
 	trigger_run(&tx->on_destroy, NULL);
 	trigger_destroy(&tx->on_destroy);
 
@@ -346,7 +407,9 @@ vy_tx_send_to_read_view(struct vy_tx *tx, struct txv *v)
 		if (rv == NULL)
 			return -1;
 		abort->read_view = rv;
+		rlist_del_entry(abort, in_write_list);
 	}
+	fiber_cond_broadcast(&tx->xm->cond);
 	return 0;
 }
 
@@ -368,7 +431,9 @@ vy_tx_abort_readers(struct vy_tx *tx, struct txv *v)
 		if (abort->state != VINYL_TX_READY)
 			continue;
 		abort->state = VINYL_TX_ABORT;
+		rlist_del_entry(abort, in_write_list);
 	}
+	fiber_cond_broadcast(&tx->xm->cond);
 }
 
 struct vy_tx *
@@ -594,6 +659,9 @@ vy_tx_commit(struct vy_tx *tx, int64_t lsn)
 	if (tx->read_view != &xm->global_read_view)
 		tx->read_view->vlsn = lsn;
 out:
+	rlist_del_entry(tx, in_write_list);
+	fiber_cond_broadcast(&xm->cond);
+
 	vy_tx_destroy(tx);
 	mempool_free(&xm->tx_mempool, tx);
 }
@@ -655,6 +723,9 @@ vy_tx_rollback(struct vy_tx *tx)
 
 	if (tx->state == VINYL_TX_COMMIT)
 		vy_tx_rollback_after_prepare(tx);
+
+	rlist_del_entry(tx, in_write_list);
+	fiber_cond_broadcast(&xm->cond);
 
 	vy_tx_destroy(tx);
 	mempool_free(&xm->tx_mempool, tx);
@@ -852,6 +923,11 @@ vy_tx_set(struct vy_tx *tx, struct vy_lsm *lsm, struct tuple *stmt)
 	tx->write_size += tuple_size(stmt);
 	vy_stmt_counter_acct_tuple(&lsm->stat.txw.count, stmt);
 	stailq_add_tail_entry(&tx->log, v, next_in_log);
+
+	if (tx->write_id < 0) {
+		tx->write_id = ++tx->xm->last_write_id;
+		rlist_add_tail_entry(&tx->xm->write_list, tx, in_write_list);
+	}
 	return 0;
 }
 
