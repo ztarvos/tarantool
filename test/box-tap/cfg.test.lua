@@ -6,7 +6,7 @@ local socket = require('socket')
 local fio = require('fio')
 local uuid = require('uuid')
 local msgpack = require('msgpack')
-test:plan(95)
+test:plan(98)
 
 --------------------------------------------------------------------------------
 -- Invalid values
@@ -39,6 +39,8 @@ invalid('listen', '//!')
 invalid('log', ':')
 invalid('log', 'syslog:xxx=')
 invalid('log_level', 'unknown')
+invalid('log_format', "xxx")
+invalid('log', ":test:")
 invalid('vinyl_memory', -1)
 invalid('vinyl_read_threads', 0)
 invalid('vinyl_write_threads', 1)
@@ -56,6 +58,7 @@ end
 
 invalid_combinations("log, log_nonblock", {log = "1.log", log_nonblock = true})
 invalid_combinations("log, log_format", {log = "syslog:identity=tarantool", log_format = 'json'})
+invalid_combinations("log, log_nonblock", {log_nonblock = true})
 
 test:is(type(box.cfg), 'function', 'box is not started')
 
